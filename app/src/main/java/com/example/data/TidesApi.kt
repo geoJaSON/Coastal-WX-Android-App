@@ -10,7 +10,6 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -70,7 +69,7 @@ interface TidePredictionsApi {
         @Query("product") product: String = "predictions",
         @Query("datum") datum: String = "MLLW",
         @Query("units") units: String = "english",
-        @Query("time_zone") timeZone: String = "lst_ldt",
+        @Query("time_zone") timeZone: String = "gmt",
         @Query("interval") interval: String = "hilo",
         @Query("format") format: String = "json",
         @Query("application") application: String = "CoastalWX"
@@ -129,16 +128,20 @@ object TidesService {
     }
 
     fun todayBeginDate(): String {
-        val cal = Calendar.getInstance()
-        return SimpleDateFormat("yyyyMMdd", Locale.US).format(cal.time)
+        // begin_date is interpreted in the requested time_zone (gmt), so use the UTC date.
+        val sdf = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        return sdf.format(Date())
     }
 
     fun parsePredictionTime(t: String): Long? {
         return try {
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-            // NOAA returns local-station time when time_zone=lst_ldt; we treat the parsed
-            // value as local clock time of the station, which is what the user expects.
-            sdf.timeZone = TimeZone.getDefault()
+            // Predictions are requested with time_zone=gmt so the epoch is unambiguous;
+            // station-local (lst_ldt) parsed in the device zone broke next-tide selection
+            // whenever the viewed station sat in a different timezone.
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
             sdf.parse(t)?.time
         } catch (e: Exception) {
             null

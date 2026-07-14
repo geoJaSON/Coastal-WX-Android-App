@@ -77,4 +77,31 @@ object NWSService {
         "moderate" -> "moderate"
         else -> "minor"
     }
+
+    fun toActiveAlert(
+        feature: NWSAlertFeature,
+        storedId: String,
+        location: SavedLocation
+    ): ActiveAlert {
+        val props = feature.properties
+        return ActiveAlert(
+            id = storedId,
+            title = props.event ?: props.headline ?: "Weather Alert",
+            severity = severityRank(props.severity),
+            description = props.description?.trim().orEmpty().ifBlank {
+                props.headline?.trim().orEmpty()
+            },
+            headline = props.headline?.trim()?.takeIf { it.isNotBlank() },
+            urgency = props.urgency,
+            certainty = props.certainty,
+            effective = props.effective,
+            expires = props.expires,
+            areaDesc = props.areaDesc?.trim()?.takeIf { it.isNotBlank() },
+            instruction = props.instruction?.trim()?.takeIf { it.isNotBlank() },
+            senderName = props.senderName?.trim()?.takeIf { it.isNotBlank() },
+            sourceUrl = (feature.id ?: props.id)?.takeIf { it.startsWith("http") },
+            locationId = location.id,
+            locationName = location.name
+        )
+    }
 }

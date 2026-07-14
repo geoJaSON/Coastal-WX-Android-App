@@ -33,8 +33,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * A beautiful, real-time custom geographical vector map rendering tropical storm track points,
- * cones of uncertainty, and concentric wind-radii overlapping rings on an interactive Canvas.
+ * Interactive geographical overview rendering forecast-center track points and any verified
+ * wind radii supplied by the data pipeline. It intentionally does not synthesize an impact cone.
  */
 @OptIn(ExperimentalTextApi::class)
 @Composable
@@ -49,9 +49,10 @@ fun CustomRadarMap(
     var panX by remember { mutableStateOf(0.0f) }
     var panY by remember { mutableStateOf(0.0f) }
 
-    // Center the map coordinates default (centered on Bahamas / Florida tracking zone)
-    val centerLat = 26.5
-    val centerLon = -75.0
+    // Center on the storm when there is one (Pacific systems would otherwise render
+    // off-screen); fall back to the Bahamas / Florida tracking zone.
+    val centerLat = storm?.latitude ?: 26.5
+    val centerLon = storm?.longitude ?: -75.0
     val latSpan = 24.0
     val lonSpan = 32.0
 
@@ -85,7 +86,7 @@ fun CustomRadarMap(
     val isDark = when (mapStyle) {
         "dark" -> true
         "satellite" -> true
-        else -> !MaterialTheme.colorScheme.background.luminance().plus(0.5f).minus(1.0f).isNaN() // adaptive
+        else -> MaterialTheme.colorScheme.background.luminance() < 0.5f // adaptive
     }
 
     // Set map backdrops
@@ -151,7 +152,7 @@ fun CustomRadarMap(
                     drawLine(gridColor, Offset(x, 0f), Offset(x, height), strokeWidth = 1f)
                     drawText(
                         textMeasurer,
-                        "${lon}°W",
+                        "${kotlin.math.abs(lon)}°${if (lon < 0) "W" else "E"}",
                         Offset(x + 4f, height - 20f),
                         style = textStyle
                     )
@@ -164,7 +165,7 @@ fun CustomRadarMap(
                     drawLine(gridColor, Offset(0f, y), Offset(width, y), strokeWidth = 1f)
                     drawText(
                         textMeasurer,
-                        "${lat}°N",
+                        "${kotlin.math.abs(lat)}°${if (lat < 0) "S" else "N"}",
                         Offset(12f, y - 16f),
                         style = textStyle
                     )
@@ -193,132 +194,59 @@ fun CustomRadarMap(
             if (storm != null) {
                 val track = storm.trackPoints
 
-                // A. Draw Cone of Uncertainty polygon
-                val forecastPoints = track.filter { it.isForecast }
-                if (forecastPoints.size >= 2) {
-                    val conePathLeft = Path()
-                    val conePathRight = Path()
-                    val startPt = track.firstOrNull { !it.isForecast && !track[track.indexOf(it) + 1].isForecast } ?: storm.trackPoints.first()
-
-                    val startX = getPixelX(startPt.longitude)
-                    val startY = getPixelY(startPt.latitude)
-                    
-                    conePathLeft.moveTo(startX, startY)
-                    conePathRight.moveTo(startX, startY)
-
-                    // Compute expanding cone boundary vertices perpendicular to track heading
-                    for (i in forecastPoints.indices) {
-                        val curr = forecastPoints[i]
-                        val prev = if (i == 0) startPt else forecastPoints[i - 1]
-                        
-                        val dx = getPixelX(curr.longitude) - getPixelX(prev.longitude)
-                        val dy = getPixelY(curr.latitude) - getPixelY(prev.latitude)
-                        
-                        val len = kotlin.math.sqrt(dx * dx + dy * dy)
-                        if (len > 0) {
-                            val nx = -dy / len
-                            val ny = dx / len
-                            
-                            // Width expands progressively by day (approx 60 miles per forecast step index)
-                            val expansionRadiusMiles = 45.0 + (i * 45.0)
-                            val rPx = getRadiusInPixels(expansionRadiusMiles)
-
-                            val lx = getPixelX(curr.longitude) + nx * rPx
-                            val ly = getPixelY(curr.latitude) + ny * rPx
-                            val rx = getPixelX(curr.longitude) - nx * rPx
-                            val ry = getPixelY(curr.latitude) - ny * rPx
-
-                            conePathLeft.lineTo(lx, ly)
-                            conePathRight.lineTo(rx, ry)
-                        }
-                    }
-
-                    // Complete closed cone loop
-                    val finalConePath = Path().apply {
-                        addPath(conePathLeft)
-                        for (i in forecastPoints.indices.reversed()) {
-                            val curr = forecastPoints[i]
-                            val prev = if (i == 0) startPt else forecastPoints[i - 1]
-                            val dx = getPixelX(curr.longitude) - getPixelX(prev.longitude)
-                            val dy = getPixelY(curr.latitude) - getPixelY(prev.latitude)
-                            val len = kotlin.math.sqrt(dx * dx + dy * dy)
-                            if (len > 0) {
-                                val nx = -dy / len
-                                val ny = dx / len
-                                val expansionRadiusMiles = 45.0 + (i * 45.0)
-                                val rPx = getRadiusInPixels(expansionRadiusMiles)
-                                val rx = getPixelX(curr.longitude) - nx * rPx
-                                val ry = getPixelY(curr.latitude) - ny * rPx
-                                lineTo(rx, ry)
-                            }
-                        }
-                        close()
-                    }
-
-                    // Render translucent cone fill
-                    drawPath(
-                        finalConePath,
-                        color = Color(0x3338BDF8), // Translucent light blue
-                        style = Fill
-                    )
-                    // Draw cone border line
-                    drawPath(
-                        finalConePath,
-                        color = Color(0x8838BDF8),
-                        style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f))
-                    )
-                }
-
-                // B. Draw Wind Radii Rings around CURRENT center
+                // A. Draw Wind Radii Rings around CURRENT center (only when the feed
+                // actually provides radii — no made-up circles).
                 val currentX = getPixelX(storm.longitude)
                 val currentY = getPixelY(storm.latitude)
 
-                // 34 knot radius
-                val radius34Px = getRadiusInPixels(storm.windRadii.radius34ktNm.toDouble())
-                drawCircle(
-                    color = Color(0x19EF4444), // very translucent red
-                    radius = radius34Px,
-                    center = Offset(currentX, currentY),
-                    style = Fill
-                )
-                drawCircle(
-                    color = Color(0x7FED4444),
-                    radius = radius34Px,
-                    center = Offset(currentX, currentY),
-                    style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f))
-                )
+                storm.windRadii?.let { radii ->
+                    // 1 nautical mile = 1.15078 statute miles (the pixel converter takes miles).
+                    val radius34Px = getRadiusInPixels(radii.radius34ktNm * 1.15078)
+                    drawCircle(
+                        color = Color(0x19EF4444), // very translucent red
+                        radius = radius34Px,
+                        center = Offset(currentX, currentY),
+                        style = Fill
+                    )
+                    drawCircle(
+                        color = Color(0x7FED4444),
+                        radius = radius34Px,
+                        center = Offset(currentX, currentY),
+                        style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f))
+                    )
 
-                // 50 knot radius
-                val radius50Px = getRadiusInPixels(storm.windRadii.radius50ktNm.toDouble())
-                drawCircle(
-                    color = Color(0x2CEF4444),
-                    radius = radius50Px,
-                    center = Offset(currentX, currentY),
-                    style = Fill
-                )
-                drawCircle(
-                    color = Color(0xC0EF4444),
-                    radius = radius50Px,
-                    center = Offset(currentX, currentY),
-                    style = Stroke(width = 1.5f)
-                )
+                    // 50 knot radius
+                    val radius50Px = getRadiusInPixels(radii.radius50ktNm * 1.15078)
+                    drawCircle(
+                        color = Color(0x2CEF4444),
+                        radius = radius50Px,
+                        center = Offset(currentX, currentY),
+                        style = Fill
+                    )
+                    drawCircle(
+                        color = Color(0xC0EF4444),
+                        radius = radius50Px,
+                        center = Offset(currentX, currentY),
+                        style = Stroke(width = 1.5f)
+                    )
 
-                // 64 knot (hurricane force) core
-                val radius64Px = getRadiusInPixels(storm.windRadii.radius64ktNm.toDouble())
-                drawCircle(
-                    color = Color(0x40F43F5E), // stronger transparent red
-                    radius = radius64Px,
-                    center = Offset(currentX, currentY),
-                    style = Fill
-                )
-                drawCircle(
-                    color = Color(0xFFF43F5E),
-                    radius = radius64Px,
-                    center = Offset(currentX, currentY),
-                    style = Stroke(width = 2.5f)
-                )
+                    // 64 knot (hurricane force) core
+                    val radius64Px = getRadiusInPixels(radii.radius64ktNm * 1.15078)
+                    drawCircle(
+                        color = Color(0x40F43F5E), // stronger transparent red
+                        radius = radius64Px,
+                        center = Offset(currentX, currentY),
+                        style = Fill
+                    )
+                    drawCircle(
+                        color = Color(0xFFF43F5E),
+                        radius = radius64Px,
+                        center = Offset(currentX, currentY),
+                        style = Stroke(width = 2.5f)
+                    )
+                }
 
-                // C. Draw Past & Forecast tracks
+                // B. Draw Past & Forecast center tracks
                 val pathPast = Path()
                 val pathForecast = Path()
                 
@@ -425,7 +353,7 @@ fun CustomRadarMap(
                 )
                 drawText(
                     textMeasurer,
-                    "HURRICANE ${storm.name.uppercase()}",
+                    "${storm.type.uppercase()} ${storm.name.uppercase()}",
                     Offset(currentX + 16f, currentY + 12f),
                     style = textStyle.copy(
                         fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,

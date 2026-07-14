@@ -28,10 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.PreferencesHelper
 import com.example.service.StatusBarTempService
+import com.example.worker.WeatherSyncWorker
 import com.example.ui.GpsRequestState
 import com.example.ui.MainViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -49,7 +51,7 @@ fun SettingsScreen(
     var measurementSystem by remember { mutableStateOf(PreferencesHelper.getMeasurementSystem(context)) }
     var refreshInterval by remember { mutableStateOf(PreferencesHelper.getRefreshIntervalMinutes(context)) }
     var alarmRadius by remember { mutableStateOf(PreferencesHelper.getProximityAlertRadiusMiles(context)) }
-    var themeOverride by remember { mutableStateOf(PreferencesHelper.getThemeOverride(context)) }
+    var severeThreshold by remember { mutableStateOf(PreferencesHelper.getSevereAlertSeverityThreshold(context)) }
     var mapStyle by remember { mutableStateOf(PreferencesHelper.getMapStyle(context)) }
     var statusBarTemp by remember { mutableStateOf(PreferencesHelper.getStatusBarTempToggle(context)) }
 
@@ -81,6 +83,15 @@ fun SettingsScreen(
             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             viewModel.clearConnectionTestResult()
         }
+    }
+
+    // Debounced API key persist — saving + refreshing on every keystroke would fire one
+    // Tomorrow.io call (and one Keystore-encrypted write) per character typed.
+    LaunchedEffect(apiKey) {
+        if (apiKey == PreferencesHelper.getApiKey(context)) return@LaunchedEffect
+        delay(800)
+        PreferencesHelper.saveApiKey(context, apiKey)
+        viewModel.refreshAllData(silent = true)
     }
 
     // GPS request feedback
@@ -185,11 +196,7 @@ fun SettingsScreen(
                     
                     OutlinedTextField(
                         value = apiKey,
-                        onValueChange = {
-                            apiKey = it
-                            PreferencesHelper.saveApiKey(context, it)
-                            viewModel.refreshAllData(silent = true)
-                        },
+                        onValueChange = { apiKey = it },
                         label = { Text("Tomorrow.io Personal API Key") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -513,6 +520,9 @@ fun SettingsScreen(
                             refreshInterval = rounded.coerceIn(15, 60)
                             PreferencesHelper.saveRefreshIntervalMinutes(context, refreshInterval)
                         },
+                        onValueChangeFinished = {
+                            WeatherSyncWorker.ensureScheduled(context)
+                        },
                         valueRange = 15f..60f,
                         steps = 2
                     )
@@ -529,6 +539,40 @@ fun SettingsScreen(
                         },
                         valueRange = 50f..300f
                     )
+
+                    Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+
+                    // Minimum severity that triggers a system notification
+                    Text("Notify For Alerts At Or Above", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        listOf("minor", "moderate", "severe", "extreme").forEach { level ->
+                            val active = severeThreshold == level
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                    .clickable {
+                                        severeThreshold = level
+                                        PreferencesHelper.saveSevereAlertSeverityThreshold(context, level)
+                                    }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    level.uppercase(),
+                                    color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

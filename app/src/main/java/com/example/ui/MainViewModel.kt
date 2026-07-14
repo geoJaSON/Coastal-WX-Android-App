@@ -1,62 +1,27 @@
 package com.example.ui
 
 import android.app.Application
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.MainActivity
 import com.example.data.*
-import com.example.widget.WeatherWidgetProvider
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val context = application.applicationContext
     private val db = WeatherDatabase.getDatabase(context)
+    private val repository = WeatherRepository.getInstance(context)
 
-    // JSON adapters for cache persistence
     private val moshi = Moshi.Builder().build()
-    private val hourlyType = Types.newParameterizedType(List::class.java, HourlyForecastItem::class.java)
-    private val hourlyAdapter = moshi.adapter<List<HourlyForecastItem>>(hourlyType)
-    private val dailyType = Types.newParameterizedType(List::class.java, DailyForecastItem::class.java)
-    private val dailyAdapter = moshi.adapter<List<DailyForecastItem>>(dailyType)
-    private val trackType = Types.newParameterizedType(List::class.java, TrackPoint::class.java)
-    private val trackAdapter = moshi.adapter<List<TrackPoint>>(trackType)
     private val stationListAdapter = moshi.adapter(TideStationListResponse::class.java)
-
-    // Tomorrow.io Retrofit Client
-    private val tomorrowApi: TomorrowApi by lazy {
-        val client = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .build()
-        Retrofit.Builder()
-            .baseUrl("https://api.tomorrow.io/")
-            .client(client)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(TomorrowApi::class.java)
-    }
 
     // 1. Saved locations state
     val savedLocations: StateFlow<List<SavedLocation>> = db.savedLocationDao.getAllLocationsFlow()
@@ -73,11 +38,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _weatherState = MutableStateFlow<WeatherUIState>(WeatherUIState.Loading)
     val weatherState: StateFlow<WeatherUIState> = _weatherState.asStateFlow()
 
-    // 4. Alerts and Tropics
-    val activeAlerts: StateFlow<List<ActiveAlert>> = db.activeAlertDao.getActiveAlertsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // 4. Alerts and Tropics — NWS alerts are namespaced per location ("nws_<id>_…"), and only
+    // the active location's are shown so banners from a previously viewed location don't
+    // linger. Storm proximity alerts are global by design.
+    val activeAlerts: StateFlow<List<ActiveAlert>> =
+        combine(db.activeAlertDao.getActiveAlertsFlow(), _activeLocationId) { alerts, activeId ->
+            alerts.filter { alert ->
+                alert.id.startsWith("storm_prox_") || alert.id.startsWith("nws_${activeId}_")
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _stormState = MutableStateFlow<StormUIState>(StormUIState.NoStorms)
+    private val _stormState = MutableStateFlow<StormUIState>(StormUIState.Loading)
     val stormState: StateFlow<StormUIState> = _stormState.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -106,7 +77,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val gpsRequestState: StateFlow<GpsRequestState> = _gpsRequestState.asStateFlow()
 
     init {
-        createAlertNotificationChannel()
+        repository.createAlertNotificationChannel()
 
         // Setup initial default database elements if none exist
         viewModelScope.launch(Dispatchers.IO) {
@@ -174,26 +145,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val location = db.savedLocationDao.getLocationById(activeId) ?: return
         _currentLocation.value = location
 
-        val cache = db.weatherCacheDao.getWeatherCacheByLocation(activeId)
+        val cache = repository.getCachedForecast(activeId)
         if (cache != null) {
-            val hourly = try { hourlyAdapter.fromJson(cache.hourlyJson) ?: emptyList() } catch (e: Exception) { emptyList() }
-            val daily = try { dailyAdapter.fromJson(cache.dailyJson) ?: emptyList() } catch (e: Exception) { emptyList() }
-
-            _weatherState.value = WeatherUIState.Success(
-                currentTemp = cache.currentTemp,
-                feelsLike = cache.feelsLike,
-                humidity = cache.humidity,
-                windSpeed = cache.windSpeed,
-                windDirection = cache.windDirection,
-                uvIndex = cache.uvIndex,
-                visibility = cache.visibility,
-                pressure = cache.pressure,
-                weatherCode = cache.weatherCode,
-                lastUpdatedMillis = cache.lastUpdatedMillis,
-                hourlyForecast = hourly,
-                dailyForecast = daily,
-                isCached = true
-            )
+            _weatherState.value = uiStateFromCache(cache)
         } else {
             _weatherState.value = WeatherUIState.Loading
         }
@@ -205,91 +159,77 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             if (!silent) _isRefreshing.value = true
 
-            val activeId = _activeLocationId.value
             val loc = _currentLocation.value
-            val apiKey = PreferencesHelper.getApiKey(context)
-
-            if (loc != null && apiKey.isNotBlank() && activeId != -1L) {
-                try {
-                    val response = tomorrowApi.getForecast(
-                        location = "${loc.latitude},${loc.longitude}",
-                        apiKey = apiKey,
-                        units = "metric"
-                    )
-
-                    if (response.isSuccessful && response.body() != null) {
-                        val body = response.body()!!
-                        val minutelyItems = body.timelines?.minutely ?: emptyList()
-                        val hourlyItems = body.timelines?.hourly ?: emptyList()
-                        val dailyItems = body.timelines?.daily ?: emptyList()
-
-                        val current = hourlyItems.firstOrNull()?.values
-
-                        if (current != null) {
-                            val temp = current.temperature ?: 0.0
-                            val feels = current.temperatureApparent ?: temp
-                            val hum = current.humidity ?: 0.0
-                            val windS = current.windSpeed ?: 0.0
-                            val windD = current.windDirection ?: 0.0
-                            val uv = current.uvIndex ?: 0.0
-                            val vis = current.visibility ?: 10.0
-                            val press = current.pressureSurfaceLevel ?: 1013.25
-                            val code = current.weatherCode ?: 1000
-
-                            val updatedCache = WeatherCache(
-                                locationId = activeId,
-                                currentTemp = temp,
-                                feelsLike = feels,
-                                humidity = hum,
-                                windSpeed = windS,
-                                windDirection = windD,
-                                uvIndex = uv,
-                                visibility = vis,
-                                pressure = press,
-                                weatherCode = code,
-                                lastUpdatedMillis = System.currentTimeMillis(),
-                                hourlyJson = hourlyAdapter.toJson(hourlyItems.take(24)),
-                                dailyJson = dailyAdapter.toJson(dailyItems.take(5))
-                            )
-
-                            db.weatherCacheDao.insertWeatherCache(updatedCache)
-
-                            _weatherState.value = WeatherUIState.Success(
-                                currentTemp = temp,
-                                feelsLike = feels,
-                                humidity = hum,
-                                windSpeed = windS,
-                                windDirection = windD,
-                                uvIndex = uv,
-                                visibility = vis,
-                                pressure = press,
-                                weatherCode = code,
-                                lastUpdatedMillis = updatedCache.lastUpdatedMillis,
-                                hourlyForecast = hourlyItems.take(24),
-                                dailyForecast = dailyItems.take(5),
-                                minutelyForecast = minutelyItems.take(60),
-                                isCached = false
-                            )
-
-                            WeatherWidgetProvider.triggerUpdate(context)
-                        }
-                    } else {
+            if (loc != null) {
+                when (val result = repository.refreshForecast(loc)) {
+                    is WeatherRepository.ForecastResult.Success -> {
+                        _weatherState.value = WeatherUIState.Success(
+                            currentTemp = result.cache.currentTemp,
+                            feelsLike = result.cache.feelsLike,
+                            humidity = result.cache.humidity,
+                            windSpeed = result.cache.windSpeed,
+                            windDirection = result.cache.windDirection,
+                            uvIndex = result.cache.uvIndex,
+                            visibility = result.cache.visibility,
+                            pressure = result.cache.pressure,
+                            weatherCode = result.cache.weatherCode,
+                            lastUpdatedMillis = result.cache.lastUpdatedMillis,
+                            hourlyForecast = result.hourly,
+                            dailyForecast = result.daily,
+                            minutelyForecast = result.minutely,
+                            isCached = false
+                        )
+                    }
+                    is WeatherRepository.ForecastResult.NoApiKey -> {
+                        _weatherState.value = WeatherUIState.NoApiKey
+                    }
+                    is WeatherRepository.ForecastResult.Failure -> {
                         markActiveStateAsCachedOrError()
                     }
-                } catch (e: Exception) {
-                    markActiveStateAsCachedOrError()
                 }
-            } else if (apiKey.isBlank()) {
+            } else if (PreferencesHelper.getApiKey(context).isBlank()) {
                 _weatherState.value = WeatherUIState.NoApiKey
             }
 
-            // Run side-channel syncs in parallel; failures here shouldn't surface as main errors.
-            launch { syncNWSAlerts(loc, activeId) }
-            launch { syncTides(loc) }
-            launch { syncHurricaneTracking() }
+            // Side-channel syncs run in parallel, but the refresh indicator waits for them.
+            coroutineScope {
+                launch { loc?.let { repository.syncNWSAlerts(it) } }
+                launch { syncTides(loc) }
+                launch { _stormState.value = stormUiStateFrom(repository.syncStorms()) }
+            }
 
             _isRefreshing.value = false
         }
+    }
+
+    fun refreshStorms() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _stormState.value = StormUIState.Loading
+            _stormState.value = stormUiStateFrom(repository.syncStorms())
+        }
+    }
+
+    suspend fun getAlertById(alertId: String): ActiveAlert? =
+        db.activeAlertDao.getAlertById(alertId)
+
+    private fun uiStateFromCache(cache: WeatherCache): WeatherUIState.Success {
+        val hourly = try { repository.hourlyAdapter.fromJson(cache.hourlyJson) ?: emptyList() } catch (e: Exception) { emptyList() }
+        val daily = try { repository.dailyAdapter.fromJson(cache.dailyJson) ?: emptyList() } catch (e: Exception) { emptyList() }
+        return WeatherUIState.Success(
+            currentTemp = cache.currentTemp,
+            feelsLike = cache.feelsLike,
+            humidity = cache.humidity,
+            windSpeed = cache.windSpeed,
+            windDirection = cache.windDirection,
+            uvIndex = cache.uvIndex,
+            visibility = cache.visibility,
+            pressure = cache.pressure,
+            weatherCode = cache.weatherCode,
+            lastUpdatedMillis = cache.lastUpdatedMillis,
+            hourlyForecast = hourly,
+            dailyForecast = daily,
+            isCached = true
+        )
     }
 
     private suspend fun markActiveStateAsCachedOrError() {
@@ -297,91 +237,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (state is WeatherUIState.Success) {
             _weatherState.value = state.copy(isCached = true)
         } else {
-            val activeId = _activeLocationId.value
-            val cache = db.weatherCacheDao.getWeatherCacheByLocation(activeId)
+            val cache = repository.getCachedForecast(_activeLocationId.value)
             if (cache != null) {
-                val hourly = try { hourlyAdapter.fromJson(cache.hourlyJson) ?: emptyList() } catch (e: Exception) { emptyList() }
-                val daily = try { dailyAdapter.fromJson(cache.dailyJson) ?: emptyList() } catch (e: Exception) { emptyList() }
-
-                _weatherState.value = WeatherUIState.Success(
-                    currentTemp = cache.currentTemp,
-                    feelsLike = cache.feelsLike,
-                    humidity = cache.humidity,
-                    windSpeed = cache.windSpeed,
-                    windDirection = cache.windDirection,
-                    uvIndex = cache.uvIndex,
-                    visibility = cache.visibility,
-                    pressure = cache.pressure,
-                    weatherCode = cache.weatherCode,
-                    lastUpdatedMillis = cache.lastUpdatedMillis,
-                    hourlyForecast = hourly,
-                    dailyForecast = daily,
-                    isCached = true
-                )
+                _weatherState.value = uiStateFromCache(cache)
             } else {
-                _weatherState.value = WeatherUIState.Error("Offline. Enter Tomorrow.io key inside settings to restore connection.")
-            }
-        }
-    }
-
-    // ---------- NWS alerts ----------
-    private suspend fun syncNWSAlerts(loc: SavedLocation?, activeId: Long) {
-        if (loc == null || activeId == -1L) return
-        try {
-            val resp = NWSService.api.getActiveAlerts(point = "${loc.latitude},${loc.longitude}")
-            if (!resp.isSuccessful) return
-            val features = resp.body()?.features ?: emptyList()
-
-            // Stable per-location id namespace so we can prune stale alerts.
-            val prefix = "nws_${activeId}_"
-            val existing = db.activeAlertDao.getAllAlerts().filter { it.id.startsWith(prefix) }
-            val incomingIds = features.mapNotNull { f -> f.properties.id?.let { prefix + it } }.toSet()
-
-            // Remove alerts that NWS no longer reports as active for this location.
-            existing.filter { it.id !in incomingIds }.forEach { stale ->
-                db.activeAlertDao.deleteAlertById(stale.id)
-            }
-
-            // Insert new alerts; skip ones the user already dismissed.
-            val dismissedIds = existing.filter { it.dismissed }.map { it.id }.toSet()
-            val toInsert = features.mapNotNull { f ->
-                val props = f.properties
-                val rawId = props.id ?: return@mapNotNull null
-                val storedId = prefix + rawId
-                if (storedId in dismissedIds) return@mapNotNull null
-                ActiveAlert(
-                    id = storedId,
-                    title = props.event ?: props.headline ?: "Weather Alert",
-                    severity = NWSService.severityRank(props.severity),
-                    description = listOfNotNull(
-                        props.headline?.takeIf { it.isNotBlank() },
-                        props.areaDesc?.takeIf { it.isNotBlank() }?.let { "Area: $it" },
-                        props.instruction?.takeIf { it.isNotBlank() }
-                    ).joinToString("\n").ifBlank { props.description ?: "" }.take(500)
+                _weatherState.value = WeatherUIState.Error(
+                    "Couldn't reach Tomorrow.io. Check your connection — or verify your API key in Settings."
                 )
             }
-            if (toInsert.isNotEmpty()) {
-                // Filter out ones that already exist (avoid re-notifying for unchanged alerts).
-                val newOnes = toInsert.filter { incoming ->
-                    existing.none { it.id == incoming.id }
-                }
-                db.activeAlertDao.insertAlerts(toInsert)
-                val mostSevere = newOnes.maxByOrNull { severityWeight(it.severity) }
-                if (mostSevere != null && severityWeight(mostSevere.severity) >= 3) {
-                    sendSystemNotification(mostSevere.title, mostSevere.description.take(120))
-                }
-            }
-        } catch (e: Exception) {
-            // Network/parse failures are non-fatal; keep stale cached alerts.
         }
-    }
-
-    private fun severityWeight(s: String): Int = when (s.lowercase()) {
-        "extreme" -> 4
-        "severe" -> 3
-        "moderate" -> 2
-        "minor" -> 1
-        else -> 0
     }
 
     // ---------- Tides ----------
@@ -442,145 +306,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         } catch (e: Exception) {
             // leave existing summary as-is
-        }
-    }
-
-    // ---------- Hurricane / NHC ----------
-    private suspend fun syncHurricaneTracking() {
-        val isSimulationEnforced = PreferencesHelper.getThemeOverride(context) == "simulated_hurricane"
-
-        try {
-            val response = NHCService.api.getCurrentStorms()
-            if (response.isSuccessful && response.body() != null && !isSimulationEnforced) {
-                val stormsList = response.body()?.storms ?: emptyList()
-                if (stormsList.isEmpty()) {
-                    _stormState.value = StormUIState.NoStorms
-                } else {
-                    val details = stormsList.map { ns ->
-                        StormDetail(
-                            id = ns.id,
-                            name = ns.name,
-                            basin = when (ns.basin) {
-                                "AT" -> "Atlantic"
-                                "EP" -> "Eastern Pacific"
-                                else -> "Central Pacific"
-                            },
-                            type = when (ns.type) {
-                                "HU" -> "Hurricane"
-                                "TS" -> "Tropical Storm"
-                                else -> "Tropical Depression"
-                            },
-                            category = ns.category,
-                            latitude = ns.latitude,
-                            longitude = ns.longitude,
-                            windSpeedKts = ns.windSpeedKts,
-                            pressureMb = ns.pressureMb,
-                            direction = ns.direction ?: "WNW",
-                            speedMph = ns.speedMph ?: 12.0,
-                            trackPoints = listOf(
-                                TrackPoint("Current Center", ns.latitude, ns.longitude, ns.windSpeedKts.toInt(), ns.pressureMb.toInt(), false, "Record")
-                            ),
-                            windRadii = WindRadii(100.0, 60.0, 30.0),
-                            watchWarningAreas = emptyList(),
-                            advisoryText = "Advisory text missing inside NHC advisory payload.",
-                            discussionText = "Discussion text missing.",
-                            detailUrl = "https://www.nhc.noaa.gov/"
-                        )
-                    }
-                    _stormState.value = StormUIState.Active(details)
-                    checkLocationsProximityAlert(details)
-                }
-            } else if (isSimulationEnforced) {
-                val simulated = NHCService.getSimulatedStorm()
-                _stormState.value = StormUIState.Active(listOf(simulated))
-                checkLocationsProximityAlert(listOf(simulated))
-            } else {
-                _stormState.value = StormUIState.NoStorms
-            }
-        } catch (e: Exception) {
-            if (isSimulationEnforced) {
-                val simulated = NHCService.getSimulatedStorm()
-                _stormState.value = StormUIState.Active(listOf(simulated))
-                checkLocationsProximityAlert(listOf(simulated))
-            } else {
-                _stormState.value = StormUIState.NoStorms
-            }
-        }
-    }
-
-    private suspend fun checkLocationsProximityAlert(storms: List<StormDetail>) {
-        val locations = db.savedLocationDao.getAllLocationsFlow().first()
-        val radiusLimit = PreferencesHelper.getProximityAlertRadiusMiles(context)
-
-        storms.forEach { storm ->
-            locations.forEach { loc ->
-                val dist = calculateDistanceMiles(loc.latitude, loc.longitude, storm.latitude, storm.longitude)
-                if (dist <= radiusLimit) {
-                    val alertId = "storm_prox_${storm.id}_${loc.id}"
-                    val exists = db.activeAlertDao.getAllAlerts().any { it.id == alertId }
-                    if (!exists) {
-                        val newAlert = ActiveAlert(
-                            id = alertId,
-                            title = "URGENT: ${storm.type} ${storm.name} APPROACHING",
-                            severity = "extreme",
-                            description = "Storm core estimated at ${dist.toInt()} miles from ${loc.name}. Sustained winds: ${storm.windSpeedKts.toInt()} knots. Secure your surroundings immediately."
-                        )
-                        db.activeAlertDao.insertAlerts(listOf(newAlert))
-                        sendSystemNotification("URGENT TROPICAL WARNING", newAlert.description)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun calculateDistanceMiles(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val earthRadiusMiles = 3958.8
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
-        val a = sin(dLat / 2) * sin(dLat / 2) +
-                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                sin(dLon / 2) * sin(dLon / 2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return earthRadiusMiles * c
-    }
-
-    private fun sendSystemNotification(title: String, body: String) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pi = PendingIntent.getActivity(
-            context,
-            999,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val builder = NotificationCompat.Builder(context, "aero_life_safety_channel")
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pi)
-            .setAutoCancel(true)
-
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(System.currentTimeMillis().toInt(), builder.build())
-    }
-
-    private fun createAlertNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "aero_life_safety_channel",
-                "Severe Weather Warnings",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Severe lightning, wind, and hurricane hazard proximity alarms"
-                enableLights(true)
-                enableVibration(true)
-                setBypassDnd(true)
-            }
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
         }
     }
 
@@ -701,7 +426,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val fix = LocationProvider.getCurrentLocation(context) ?: return
 
         // Skip update if the device hasn't moved meaningfully (avoids hammering reverse-geocode).
-        val moved = calculateDistanceMiles(
+        val moved = repository.calculateDistanceMiles(
             existing.latitude, existing.longitude, fix.latitude, fix.longitude
         )
         if (moved < 1.0 && existing.name.startsWith("Current Location")) return
@@ -749,7 +474,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun testTomorrowApiKeyConnection(testKey: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val response = tomorrowApi.getForecast(
+                val response = repository.tomorrowApi.getForecast(
                     location = "40.7128,-74.0060",
                     apiKey = testKey,
                     units = "metric"
@@ -797,9 +522,39 @@ sealed interface WeatherUIState {
 }
 
 sealed interface StormUIState {
-    data object NoStorms : StormUIState
-    data class Active(val activeStorms: List<StormDetail>) : StormUIState
+    data object Loading : StormUIState
+    data class NoStorms(
+        val lastVerifiedMillis: Long?,
+        val isCached: Boolean
+    ) : StormUIState
+    data class Active(
+        val activeStorms: List<StormDetail>,
+        val lastVerifiedMillis: Long?,
+        val isCached: Boolean
+    ) : StormUIState
+    data class Error(val message: String) : StormUIState
 }
+
+internal fun stormUiStateFrom(result: WeatherRepository.StormSyncResult): StormUIState =
+    when (result) {
+        is WeatherRepository.StormSyncResult.Fresh -> {
+            if (result.storms.isEmpty()) {
+                StormUIState.NoStorms(result.lastVerifiedMillis, isCached = false)
+            } else {
+                StormUIState.Active(result.storms, result.lastVerifiedMillis, isCached = false)
+            }
+        }
+        is WeatherRepository.StormSyncResult.Cached -> {
+            if (result.storms.isEmpty()) {
+                StormUIState.NoStorms(result.lastVerifiedMillis, isCached = true)
+            } else {
+                StormUIState.Active(result.storms, result.lastVerifiedMillis, isCached = true)
+            }
+        }
+        is WeatherRepository.StormSyncResult.Unavailable -> {
+            StormUIState.Error(result.reason)
+        }
+    }
 
 sealed interface GpsRequestState {
     data object Idle : GpsRequestState

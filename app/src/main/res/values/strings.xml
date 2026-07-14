@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">Coastal WX</string>
+    <string name="widget_compact_description">Current temperature and conditions at a glance.</string>
+    <string name="widget_large_description">Current conditions, 3-day outlook, and tropical storm alerts.</string>
+    <string name="widget_condition_description">Current weather condition</string>
+    <string name="widget_refresh_description">Refresh weather</string>
+    <string name="widget_temperature_placeholder">--°</string>
+    <string name="widget_setup_placeholder">Tap to set up</string>
+    <string name="widget_open_placeholder">Tap to open</string>
+    <string name="widget_brand">Coastal WX</string>
+    <string name="widget_alert_mark">!</string>
+    <string name="widget_hilo_placeholder">H:--°  L:--°</string>
+    <string name="widget_feels_placeholder">Feels --°</string>
+    <string name="widget_wind_placeholder">Wind --</string>
+    <string name="widget_humidity_placeholder" formatted="false">Humidity --%</string>
+    <string name="widget_dash_placeholder">—</string>
+    <string name="widget_alert_placeholder">WEATHER ALERT</string>
 </resources>

@@ -33,9 +33,13 @@ No Google Play Services, no Firebase, no analytics, no telemetry. Device locatio
    ```
    If the keystore isn't present, the release build still succeeds but is debug-signed — fine for sideloading, not for Play Store upload.
 
+## Background refresh
+
+A WorkManager job refreshes the forecast, NWS alerts, NHC storm list, and the home-screen widgets at the interval set in Settings (15–60 min), even while the app is closed. This is also what keeps severe-weather and storm-proximity notifications working in the background.
+
 ## Tomorrow.io free-tier budget
 
-The free tier is 500 calls/day. The app makes one forecast call per active location per refresh. With the default 15-minute interval that's 96 calls/day — plenty of headroom even if you switch between locations several times a day.
+The free tier is 500 calls/day. The app makes one forecast call per refresh. The background job alone is 96 calls/day at the default 15-minute interval; with the in-app refresh loop running while the app is open, worst case is roughly double that — still well under the cap.
 
 ## Permissions
 

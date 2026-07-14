@@ -18,39 +18,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.PreferencesHelper
 import com.example.data.StormDetail
 import com.example.ui.MainViewModel
 import com.example.ui.StormUIState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TropicsScreen(
     viewModel: MainViewModel,
     onNavigateToStormDetail: (String) -> Unit,
-    onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = viewModel.getApplication<android.app.Application>()
     val stormState by viewModel.stormState.collectAsState()
-    var forceSimulationMode by remember { mutableStateOf(PreferencesHelper.getThemeOverride(context) == "simulated_hurricane") }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Tropics", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
                 actions = {
-                    IconButton(onClick = {
-                        val next = !forceSimulationMode
-                        forceSimulationMode = next
-                        PreferencesHelper.saveThemeOverride(context, if (next) "simulated_hurricane" else "system")
-                        viewModel.refreshAllData(silent = true)
-                    }) {
-                        Icon(
-                            imageVector = if (forceSimulationMode) Icons.Filled.Animation else Icons.Filled.Cyclone,
-                            contentDescription = "Toggle Simulation",
-                            tint = if (forceSimulationMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    IconButton(
+                        onClick = { viewModel.refreshStorms() },
+                        enabled = stormState !is StormUIState.Loading
+                    ) {
+                        if (stormState is StormUIState.Loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(19.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh tropical advisories")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
@@ -59,18 +56,29 @@ fun TropicsScreen(
         containerColor = Color.Transparent
     ) { innerPadding ->
         when (val state = stormState) {
+            is StormUIState.Loading -> TropicalLoadingContent(
+                modifier = modifier.padding(innerPadding)
+            )
+
+            is StormUIState.Error -> TropicalErrorContent(
+                modifier = modifier.padding(innerPadding),
+                message = state.message,
+                onRetry = { viewModel.refreshStorms() }
+            )
+
             is StormUIState.NoStorms -> QuietBasinsContent(
                 modifier = modifier.padding(innerPadding),
-                onLaunchSimulation = {
-                    forceSimulationMode = true
-                    PreferencesHelper.saveThemeOverride(context, "simulated_hurricane")
-                    viewModel.refreshAllData(silent = true)
-                }
+                lastVerifiedMillis = state.lastVerifiedMillis,
+                isCached = state.isCached,
+                onRetry = { viewModel.refreshStorms() }
             )
 
             is StormUIState.Active -> ActiveStormsContent(
                 modifier = modifier.padding(innerPadding),
                 storms = state.activeStorms,
+                lastVerifiedMillis = state.lastVerifiedMillis,
+                isCached = state.isCached,
+                onRetry = { viewModel.refreshStorms() },
                 onStormClick = onNavigateToStormDetail
             )
         }
@@ -80,7 +88,12 @@ fun TropicsScreen(
 // ── No activity screen ──────────────────────────────────────────────────────
 
 @Composable
-private fun QuietBasinsContent(modifier: Modifier = Modifier, onLaunchSimulation: () -> Unit) {
+private fun QuietBasinsContent(
+    modifier: Modifier = Modifier,
+    lastVerifiedMillis: Long?,
+    isCached: Boolean,
+    onRetry: () -> Unit
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -88,7 +101,12 @@ private fun QuietBasinsContent(modifier: Modifier = Modifier, onLaunchSimulation
             .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
+        BasinFreshnessBanner(
+            lastVerifiedMillis = lastVerifiedMillis,
+            isCached = isCached,
+            onRetry = onRetry
+        )
+        Spacer(modifier = Modifier.height(38.dp))
 
         Icon(
             imageVector = Icons.Filled.BeachAccess,
@@ -106,9 +124,18 @@ private fun QuietBasinsContent(modifier: Modifier = Modifier, onLaunchSimulation
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "All monitored basins are clear of active advisories.",
+            if (isCached) "No systems were present in the last verified NHC update."
+            else "No systems currently have active NHC advisories.",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "This view tracks systems with active advisories. Tropical outlook disturbances are not included yet.",
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
             textAlign = TextAlign.Center
         )
 
@@ -137,14 +164,6 @@ private fun QuietBasinsContent(modifier: Modifier = Modifier, onLaunchSimulation
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-        Spacer(modifier = Modifier.height(32.dp))
-
-        TextButton(onClick = onLaunchSimulation) {
-            Icon(Icons.Filled.Cyclone, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Launch simulation", fontSize = 13.sp)
-        }
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
@@ -172,6 +191,9 @@ private fun SeasonRow(basin: String, dates: String) {
 private fun ActiveStormsContent(
     modifier: Modifier = Modifier,
     storms: List<StormDetail>,
+    lastVerifiedMillis: Long?,
+    isCached: Boolean,
+    onRetry: () -> Unit,
     onStormClick: (String) -> Unit
 ) {
     val sorted = storms.sortedWith(
@@ -191,6 +213,13 @@ private fun ActiveStormsContent(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
+        BasinFreshnessBanner(
+            lastVerifiedMillis = lastVerifiedMillis,
+            isCached = isCached,
+            onRetry = onRetry
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+
         // Active count chip
         Row(
             modifier = Modifier.padding(bottom = 16.dp),
@@ -211,7 +240,7 @@ private fun ActiveStormsContent(
                             .background(MaterialTheme.colorScheme.error)
                     )
                     Text(
-                        "LIVE",
+                        if (isCached) "SNAPSHOT" else "ACTIVE",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onErrorContainer,
@@ -250,6 +279,116 @@ private fun ActiveStormsContent(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun BasinFreshnessBanner(
+    lastVerifiedMillis: Long?,
+    isCached: Boolean,
+    onRetry: () -> Unit
+) {
+    val checkedAt = lastVerifiedMillis?.let {
+        SimpleDateFormat("MMM d · h:mm a", Locale.getDefault()).format(Date(it))
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (isCached) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        },
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isCached) Icons.Filled.CloudOff else Icons.Filled.Verified,
+                contentDescription = null,
+                tint = if (isCached) MaterialTheme.colorScheme.onSecondaryContainer
+                else MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (isCached) "OFFLINE SNAPSHOT" else "NHC DATA VERIFIED",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.8.sp
+                )
+                Text(
+                    if (isCached) {
+                        checkedAt?.let { "Last verified $it" } ?: "Unable to verify current advisories"
+                    } else {
+                        checkedAt?.let { "Checked $it" } ?: "Current advisory feed"
+                    },
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (isCached) {
+                IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Retry tropical update")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TropicalLoadingContent(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator()
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Checking NHC advisories…", fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun TropicalErrorContent(
+    modifier: Modifier = Modifier,
+    message: String,
+    onRetry: () -> Unit
+) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(28.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            Icons.Filled.CloudOff,
+            contentDescription = null,
+            modifier = Modifier.size(58.dp),
+            tint = MaterialTheme.colorScheme.error
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Tropical data unavailable",
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "$message We cannot confirm that monitored basins are clear.",
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(22.dp))
+        Button(onClick = onRetry) {
+            Icon(Icons.Filled.Refresh, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Try again")
+        }
     }
 }
 
@@ -327,7 +466,10 @@ private fun StormListCard(storm: StormDetail, onClick: () -> Unit) {
                 )
                 StormMetricCol(
                     label = "POSITION",
-                    value = "${storm.latitude}°N"
+                    value = "%.1f%s %.1f%s".format(
+                        kotlin.math.abs(storm.latitude), if (storm.latitude < 0) "S" else "N",
+                        kotlin.math.abs(storm.longitude), if (storm.longitude < 0) "W" else "E"
+                    )
                 )
             }
         }

@@ -2,33 +2,51 @@ package com.example.data
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.GET
+import java.io.ByteArrayInputStream
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipInputStream
 
+// Schema matches https://www.nhc.noaa.gov/CurrentStorms.json — note that intensity/pressure
+// are strings, latitude/longitude are "12.8N"-style strings (numeric twins carry the values),
+// and there is no category field; category is derived from intensity in knots.
 @JsonClass(generateAdapter = true)
 data class NHCCurrentStorms(
-    @Json(name = "storms") val storms: List<NHCStorm>?
+    @Json(name = "activeStorms") val activeStorms: List<NHCStorm>?
 )
 
 @JsonClass(generateAdapter = true)
 data class NHCStorm(
     @Json(name = "id") val id: String,
+    @Json(name = "binNumber") val binNumber: String?,
     @Json(name = "name") val name: String,
-    @Json(name = "basin") val basin: String,          // AT, EP, CP (Atlantic, East Pacific, Central Pacific)
-    @Json(name = "type") val type: String,            // HU (Hurricane), TS (Tropical Storm), TD (Tropical Depression)
-    @Json(name = "category") val category: Int,        // 1-5 (Saffir-Simpson)
-    @Json(name = "latitude") val latitude: Double,
-    @Json(name = "longitude") val longitude: Double,
-    @Json(name = "windSpeed") val windSpeedKts: Double, // Wind speed in knots
-    @Json(name = "pressure") val pressureMb: Double,    // Minimum central pressure millibars
-    @Json(name = "movementDirection") val direction: String?, // e.g. "WNW"
-    @Json(name = "movementSpeed") val speedMph: Double?,      // Speed in mph
-    @Json(name = "advisoryNumber") val advisoryNumber: String?,
-    @Json(name = "lastUpdated") val lastUpdated: String?
+    @Json(name = "classification") val classification: String?, // TD, TS, HU, STD, STS, PTC
+    @Json(name = "intensity") val intensityKts: String?,        // Max sustained wind, knots
+    @Json(name = "pressure") val pressureMb: String?,           // Minimum central pressure, mb
+    @Json(name = "latitudeNumeric") val latitude: Double?,
+    @Json(name = "longitudeNumeric") val longitude: Double?,
+    @Json(name = "movementDir") val movementDirDegrees: Double?,
+    @Json(name = "movementSpeed") val movementSpeedKts: Double?,
+    @Json(name = "lastUpdate") val lastUpdate: String?,
+    @Json(name = "publicAdvisory") val publicAdvisory: NHCProduct?,
+    @Json(name = "forecastDiscussion") val forecastDiscussion: NHCProduct?,
+    @Json(name = "forecastTrack") val forecastTrack: NHCProduct?
+)
+
+// Shared by text products (url) and GIS products (kmzFile) — absent fields stay null.
+@JsonClass(generateAdapter = true)
+data class NHCProduct(
+    @Json(name = "advNum") val advNum: String?,
+    @Json(name = "issuance") val issuance: String?,
+    @Json(name = "url") val url: String?,
+    @Json(name = "kmzFile") val kmzFile: String?
 )
 
 interface NHCApi {
@@ -69,7 +87,9 @@ data class StormDetail(
     val direction: String,
     val speedMph: Double,
     val trackPoints: List<TrackPoint>,
-    val windRadii: WindRadii,
+    // Null when the advisory feed doesn't carry radii — the map skips the rings rather
+    // than drawing made-up circles.
+    val windRadii: WindRadii?,
     val watchWarningAreas: List<WatchWarningArea>,
     val advisoryText: String,
     val discussionText: String,
@@ -96,108 +116,175 @@ object NHCService {
 
     val api: NHCApi = retrofit.create(NHCApi::class.java)
 
-    /**
-     * Generates active storm tracks for simulation if no real storms are in progress
-     */
-    fun getSimulatedStorm(currentTime: String = "May 25"): StormDetail {
-        val baseLat = 26.5
-        val baseLon = -79.2
-        
-        // 5-day track beginning 24 hours ago and projecting out 120 hours
-        val points = listOf(
-            // Past spots
-            TrackPoint("Past 24h", baseLat - 2.0, baseLon - 3.0, 85, 975, false, "May 24, 00:00 UTC"),
-            TrackPoint("Past 12h", baseLat - 1.0, baseLon - 1.5, 95, 964, false, "May 24, 12:00 UTC"),
-            TrackPoint("Current Location", baseLat, baseLon, 105, 952, false, "May 24, 23:00 UTC (Current)"),
-            // Future forecasts (open dots on map)
-            TrackPoint("12h Forecast", baseLat + 1.2, baseLon + 1.2, 110, 948, true, "May 25, 12:00 UTC"),
-            TrackPoint("24h Forecast", baseLat + 2.4, baseLon + 2.5, 115, 944, true, "May 25, 23:00 UTC"),
-            TrackPoint("36h Forecast", baseLat + 3.6, baseLon + 3.6, 120, 940, true, "May 26, 11:00 UTC"),
-            TrackPoint("48h Forecast", baseLat + 4.8, baseLon + 4.6, 115, 944, true, "May 26, 23:00 UTC"),
-            TrackPoint("72h Forecast", baseLat + 7.0, baseLon + 6.0, 100, 958, true, "May 27, 23:00 UTC"),
-            TrackPoint("96h Forecast", baseLat + 9.5, baseLon + 7.2, 85, 970, true, "May 28, 23:00 UTC"),
-            TrackPoint("120h Forecast", baseLat + 12.0, baseLon + 8.1, 65, 985, true, "May 29, 23:00 UTC")
+    fun classificationLabel(classification: String?): String = when (classification) {
+        "HU" -> "Hurricane"
+        "TS" -> "Tropical Storm"
+        "TD" -> "Tropical Depression"
+        "STS" -> "Subtropical Storm"
+        "STD" -> "Subtropical Depression"
+        "PTC" -> "Potential Tropical Cyclone"
+        else -> "Tropical System"
+    }
+
+    fun basinLabel(stormId: String): String = when (stormId.take(2).lowercase()) {
+        "al" -> "Atlantic"
+        "ep" -> "Eastern Pacific"
+        "cp" -> "Central Pacific"
+        else -> "Atlantic"
+    }
+
+    /** Saffir-Simpson category from sustained winds in knots; 0 below hurricane force. */
+    fun categoryFromKnots(kts: Double): Int = when {
+        kts >= 137 -> 5
+        kts >= 113 -> 4
+        kts >= 96 -> 3
+        kts >= 83 -> 2
+        kts >= 64 -> 1
+        else -> 0
+    }
+
+    fun compassDirection(degrees: Double?): String {
+        if (degrees == null) return "—"
+        val dirs = listOf(
+            "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"
         )
+        val idx = (((degrees % 360 + 360) % 360 + 11.25) / 22.5).toInt() % 16
+        return dirs[idx]
+    }
 
-        val windRadii = WindRadii(
-            radius34ktNm = 120.0,
-            radius50ktNm = 75.0,
-            radius64ktNm = 40.0
-        )
+    /** "011a" → "11A" — matches the "Advisory Number 11A" line inside the text products. */
+    fun normalizeAdvNum(adv: String?): String? =
+        adv?.trimStart('0')?.uppercase()?.takeIf { it.isNotBlank() }
 
-        // Coastal segments (approximation for visual mapping on map)
-        val watchWarningAreas = listOf(
-            WatchWarningArea(
-                "hurricane_warning",
-                listOf(
-                    TrackPoint("P1", 25.5, -80.4, 0, 0, false, ""),
-                    TrackPoint("P2", 26.8, -80.0, 0, 0, false, ""),
-                    TrackPoint("P3", 28.0, -80.6, 0, 0, false, "")
-                )
-            ),
-            WatchWarningArea(
-                "tropical_storm_watch",
-                listOf(
-                    TrackPoint("W1", 24.5, -81.8, 0, 0, false, ""),
-                    TrackPoint("W2", 25.0, -80.8, 0, 0, false, ""),
-                    TrackPoint("W3", 29.0, -81.0, 0, 0, false, "")
-                )
-            )
-        )
+    /** Downloads an NHC text product page (.shtml) and extracts the bulletin from its <pre> block. */
+    suspend fun fetchProductText(url: String?): String? = withContext(Dispatchers.IO) {
+        if (url.isNullOrBlank()) return@withContext null
+        try {
+            client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val html = resp.body?.string() ?: return@withContext null
+                val pre = Regex("(?s)<pre[^>]*>(.*?)</pre>").find(html)?.groupValues?.get(1)
+                    ?: return@withContext null
+                pre.replace("&amp;", "&")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&quot;", "\"")
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
 
-        val advisoryText = """
-            SIMULATED TROPICAL CYCLONE ADVISORY
-            NATIONAL HURRICANE CENTER MIAMI FL
-            1100 PM EDT SUN MAY 24 2026
+    /** Downloads the forecast-track KMZ (a zip holding one KML) and parses its track points. */
+    suspend fun fetchForecastTrack(kmzUrl: String?): List<TrackPoint>? = withContext(Dispatchers.IO) {
+        if (kmzUrl.isNullOrBlank()) return@withContext null
+        try {
+            client.newCall(Request.Builder().url(kmzUrl).build()).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val bytes = resp.body?.bytes() ?: return@withContext null
+                val kml = ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
+                    generateSequence { zin.nextEntry }
+                        .firstOrNull { it.name.endsWith(".kml", ignoreCase = true) }
+                        ?.let { zin.readBytes().toString(Charsets.UTF_8) }
+                } ?: return@withContext null
+                NHCTrackParser.parseTrackKml(kml).takeIf { it.isNotEmpty() }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
 
-            ...SIMULATED STORM CORE PASSING NEAR EASTERN BAHAMAS...
-            ...EXPECTED TO STRENGTHEN AS IT TRACKS TOWARD THE CAROLINAS...
+    fun toStormDetail(storm: NHCStorm): StormDetail? {
+        val lat = storm.latitude ?: return null
+        val lon = storm.longitude ?: return null
+        val windKts = storm.intensityKts?.toDoubleOrNull() ?: 0.0
+        val pressure = storm.pressureMb?.toDoubleOrNull() ?: 0.0
+        val type = classificationLabel(storm.classification)
+        val advNum = storm.publicAdvisory?.advNum
+        val updated = storm.lastUpdate ?: "unknown"
 
-            SUMMARY OF 1100 PM EDT...0300 UTC...INFORMATION
-            ----------------------------------------------
-            LOCATION...26.5N 79.2W
-            ABOUT 120 MI ENE OF MIAMI FLORIDA
-            MAXIMUM SUSTAINED WINDS...105 KTS...120 MPH
-            PRESENT MOVEMENT...NE OR 45 DEGREES AT 14 MPH
-            MINIMUM CENTRAL PRESSURE...952 MB
-
-            WATCHES AND WARNINGS
-            --------------------
-            A HURRICANE WARNING IS IN EFFECT FOR...
-            * COASTAL BROWARD, PALM BEACH, AND MARTIN COUNTIES IN FLORIDA.
-
-            A TROPICAL STORM WATCH IS IN EFFECT FOR...
-            * FLOODING CONDITIONS EXTENDING INTO COASTAL GEORGIA.
-        """.trimIndent()
-
-        val discussionText = """
-            SIMULATED TROPICAL CYCLONE DISCUSSION
-            NWS NATIONAL HURRICANE CENTER MIAMI FL
-            1100 PM EDT SUN MAY 24 2026
-
-            This simulated cyclone remains well-organized on infrared satellite imagery with a clear, stable 20-nautical-mile wide eye visible in regional Doppler radar scans. Upper air assessments indicate extremely favorable environments with shear below 8 knots and warm sea-surface temperature anomalies of 2.2 degrees Celsius above climatological levels. 
-            
-            The current trajectory tracker estimates a steady poleward flow fueled by the Bermuda High pressure ridge. Rapid intensification models suggest the simulated cyclone could approach Category 4 intensity within the next 24 to 36 hours as it passes over the core gulf streams. Saved locations within the forecast swath are strongly encouraged to finalize mitigation plans as storm surge and local rain totals could escalate significantly.
-        """.trimIndent()
+        val summary = buildString {
+            append("$type ${storm.name}")
+            if (advNum != null) append(" — Advisory #$advNum")
+            append("\nLast NHC update: $updated\n\n")
+            append("Position: ${"%.1f".format(lat)}N ${"%.1f".format(kotlin.math.abs(lon))}${if (lon < 0) "W" else "E"}\n")
+            append("Max sustained winds: ${windKts.toInt()} kt\n")
+            append("Minimum central pressure: ${pressure.toInt()} mb\n\n")
+            append("Open the official NHC advisory page for full text, watches, and warnings.")
+        }
 
         return StormDetail(
-            id = "SIM2026",
-            name = "Simulated Cyclone",
-            basin = "Atlantic",
-            type = "Hurricane",
-            category = 3,
-            latitude = baseLat,
-            longitude = baseLon,
-            windSpeedKts = 105.0,
-            pressureMb = 952.0,
-            direction = "NE",
-            speedMph = 14.0,
-            trackPoints = points,
-            windRadii = windRadii,
-            watchWarningAreas = watchWarningAreas,
-            advisoryText = advisoryText,
-            discussionText = discussionText,
-            detailUrl = "https://www.nhc.noaa.gov/"
+            id = storm.id,
+            name = storm.name,
+            basin = basinLabel(storm.id),
+            type = type,
+            category = categoryFromKnots(windKts),
+            latitude = lat,
+            longitude = lon,
+            windSpeedKts = windKts,
+            pressureMb = pressure,
+            direction = compassDirection(storm.movementDirDegrees),
+            speedMph = (storm.movementSpeedKts ?: 0.0) * 1.15078,
+            // Fallback track/text — WeatherRepository swaps in the fetched advisory,
+            // discussion, and KMZ forecast track when those products are reachable.
+            trackPoints = listOf(
+                TrackPoint("Current Center", lat, lon, windKts.toInt(), pressure.toInt(), false, updated)
+            ),
+            windRadii = null,
+            watchWarningAreas = emptyList(),
+            advisoryText = summary,
+            discussionText = "The full forecast discussion is published on the NHC site.\n\n" +
+                "Tap \"View Official NOAA NHC Public Advisory Page\" above to read it.",
+            detailUrl = storm.publicAdvisory?.url
+                ?: storm.forecastDiscussion?.url
+                ?: "https://www.nhc.noaa.gov/"
         )
+    }
+}
+
+object NHCTrackParser {
+    /**
+     * The TRACK KMZ holds one KML containing LineString placemarks (the connecting
+     * lines, skipped here) and Point placemarks for the initial position plus each
+     * forecast hour. The values we need — forecast hour, winds, pressure, valid time —
+     * live only in each Point's HTML description block, so this parses that text
+     * rather than the XML structure.
+     */
+    fun parseTrackKml(kml: String): List<TrackPoint> {
+        val points = mutableListOf<TrackPoint>()
+        for (pm in kml.split("<Placemark").drop(1)) {
+            val pointXml = pm.substringAfter("<Point", "")
+            if (pointXml.isEmpty()) continue
+            val coords = Regex("<coordinates>\\s*(-?[0-9.]+)\\s*,\\s*(-?[0-9.]+)").find(pointXml) ?: continue
+            val lon = coords.groupValues[1].toDoubleOrNull() ?: continue
+            val lat = coords.groupValues[2].toDoubleOrNull() ?: continue
+
+            val isInitial = pm.contains("Advisory Information")
+            val tau = Regex("(\\d+)\\s*hr Forecast").find(pm)?.groupValues?.get(1)?.toIntOrNull()
+            if (!isInitial && tau == null) continue
+
+            val windKt = Regex("Maximum Wind:\\s*(\\d+)\\s*knots").find(pm)
+                ?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val pressureMb = Regex("Minimum Pressure:\\s*(\\d+)\\s*mb").find(pm)
+                ?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val validAt = Regex("Valid at:\\s*([^<]+)").find(pm)
+                ?.groupValues?.get(1)?.trim().orEmpty()
+
+            points.add(
+                TrackPoint(
+                    timeLabel = if (isInitial) "Current Center" else "${tau}h Forecast",
+                    latitude = lat,
+                    longitude = lon,
+                    windSpeedKt = windKt,
+                    pressureMb = pressureMb,
+                    isForecast = !isInitial,
+                    dateText = validAt
+                )
+            )
+        }
+        return points
     }
 }

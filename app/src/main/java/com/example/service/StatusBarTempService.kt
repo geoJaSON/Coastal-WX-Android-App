@@ -7,7 +7,10 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.R
 import com.example.data.PreferencesHelper
+import com.example.data.UnitFormatter
+import com.example.data.WeatherCodeMapper
 import com.example.data.WeatherDatabase
 import kotlinx.coroutines.*
 
@@ -58,15 +61,10 @@ class StatusBarTempService : Service() {
                         if (cache != null) {
                             val tempCValue = cache.currentTemp
                             val isCelsius = PreferencesHelper.getTempUnit(applicationContext) == "C"
-                            val currentTempFinal = if (isCelsius) tempCValue else (tempCValue * 1.8 + 32)
+                            val currentTempFinal = UnitFormatter.tempFromC(tempCValue, isCelsius)
                             val unitLabel = if (isCelsius) "°C" else "°F"
-                            val weatherText = "${currentTempFinal.toInt()}$unitLabel • " + when (cache.weatherCode) {
-                                1000 -> "Clear"
-                                1001 -> "Cloudy"
-                                4001 -> "Rain"
-                                8000 -> "Thunderstorm"
-                                else -> "Partly Cloudy"
-                            }
+                            val weatherText = "${currentTempFinal.toInt()}$unitLabel • " +
+                                WeatherCodeMapper.getWeatherDescription(cache.weatherCode)
                             
                             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                             nm.notify(NOTIFICATION_ID, buildTempNotification(weatherText))
@@ -94,8 +92,7 @@ class StatusBarTempService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Coastal WX Current Conditions")
             .setContentText(contentText)
-            // System-default status indicators that provide high portability
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_stat_thermostat)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_MIN)

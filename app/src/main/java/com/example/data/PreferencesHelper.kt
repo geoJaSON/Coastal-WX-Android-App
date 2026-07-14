@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
@@ -8,8 +9,18 @@ object PreferencesHelper {
     private const val SECURE_PREFS_NAME = "aero_weather_secure_prefs"
     private const val NORMAL_PREFS_NAME = "aero_weather_normal_prefs"
 
+    // Built once per process — MasterKey + EncryptedSharedPreferences creation hits the
+    // Keystore and is far too expensive to repeat on every read.
+    @Volatile
+    private var securePrefs: SharedPreferences? = null
+
     // Secure SharedPreferences for API Key
-    fun getSecurePrefs(context: Context) = try {
+    fun getSecurePrefs(context: Context): SharedPreferences =
+        securePrefs ?: synchronized(this) {
+            securePrefs ?: createSecurePrefs(context.applicationContext).also { securePrefs = it }
+        }
+
+    private fun createSecurePrefs(context: Context): SharedPreferences = try {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -95,14 +106,6 @@ object PreferencesHelper {
         getNormalPrefs(context).edit().putInt("proximity_radius", miles).apply()
     }
 
-    fun getThemeOverride(context: Context): String {
-        return getNormalPrefs(context).getString("theme_override", "system") ?: "system" // system, light, dark
-    }
-
-    fun saveThemeOverride(context: Context, theme: String) {
-        getNormalPrefs(context).edit().putString("theme_override", theme).apply()
-    }
-
     fun getMapStyle(context: Context): String {
         return getNormalPrefs(context).getString("map_style", "standard") ?: "standard" // standard, satellite, dark
     }
@@ -125,5 +128,13 @@ object PreferencesHelper {
 
     fun saveActiveLocationId(context: Context, id: Long) {
         getNormalPrefs(context).edit().putLong("active_location_id", id).apply()
+    }
+
+    fun getLastSuccessfulStormSyncMillis(context: Context): Long {
+        return getNormalPrefs(context).getLong("last_successful_storm_sync", 0L)
+    }
+
+    fun saveLastSuccessfulStormSyncMillis(context: Context, millis: Long) {
+        getNormalPrefs(context).edit().putLong("last_successful_storm_sync", millis).apply()
     }
 }

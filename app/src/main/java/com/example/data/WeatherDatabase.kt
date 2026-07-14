@@ -2,6 +2,8 @@ package com.example.data
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 // 1. Entities
@@ -56,6 +58,17 @@ data class ActiveAlert(
     val title: String,
     val severity: String,       // minor, moderate, severe, extreme
     val description: String,
+    val headline: String? = null,
+    val urgency: String? = null,
+    val certainty: String? = null,
+    val effective: String? = null,
+    val expires: String? = null,
+    val areaDesc: String? = null,
+    val instruction: String? = null,
+    val senderName: String? = null,
+    val sourceUrl: String? = null,
+    val locationId: Long? = null,
+    val locationName: String? = null,
     val dismissed: Boolean = false
 )
 
@@ -116,6 +129,9 @@ interface ActiveAlertDao {
     @Query("SELECT * FROM active_alerts")
     suspend fun getAllAlerts(): List<ActiveAlert>
 
+    @Query("SELECT * FROM active_alerts WHERE id = :id LIMIT 1")
+    suspend fun getAlertById(id: String): ActiveAlert?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlerts(alerts: List<ActiveAlert>)
 
@@ -135,7 +151,7 @@ interface ActiveAlertDao {
 // 3. Database
 @Database(
     entities = [SavedLocation::class, WeatherCache::class, StormCache::class, ActiveAlert::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class WeatherDatabase : RoomDatabase() {
@@ -145,6 +161,22 @@ abstract class WeatherDatabase : RoomDatabase() {
     abstract val activeAlertDao: ActiveAlertDao
 
     companion object {
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN headline TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN urgency TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN certainty TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN effective TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN expires TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN areaDesc TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN instruction TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN senderName TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN sourceUrl TEXT")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN locationId INTEGER")
+                db.execSQL("ALTER TABLE active_alerts ADD COLUMN locationName TEXT")
+            }
+        }
+
         @Volatile
         private var INSTANCE: WeatherDatabase? = null
 
@@ -155,7 +187,8 @@ abstract class WeatherDatabase : RoomDatabase() {
                     WeatherDatabase::class.java,
                     "weather_database"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_1_2)
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
                 instance

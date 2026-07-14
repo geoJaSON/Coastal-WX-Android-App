@@ -25,6 +25,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.HourlyForecastItem
+import com.example.data.UnitFormatter
 import com.example.data.WeatherCodeMapper
 import java.text.SimpleDateFormat
 import java.util.*
@@ -73,8 +74,7 @@ fun WeatherTimelineChart(
 
                     // Parse hourly temps to determine range
                     val temps = hourlyList.map { item ->
-                        val temp = item.values.temperature ?: 0.0
-                        if (isCelsius) temp else (temp * 1.8 + 32)
+                        UnitFormatter.tempFromC(item.values.temperature ?: 0.0, isCelsius)
                     }
 
                     val maxTemp = (temps.maxOrNull() ?: 100.0) + 2.0

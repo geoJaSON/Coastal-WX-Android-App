@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.DailyForecastItem
@@ -45,6 +46,7 @@ import java.util.*
 fun HomeScreen(
     viewModel: MainViewModel,
     onNavigateToSettings: () -> Unit,
+    onNavigateToAlertDetail: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = viewModel.getApplication<android.app.Application>()
@@ -178,6 +180,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 8.dp),
+                                onClick = { onNavigateToAlertDetail(alert.id) },
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.errorContainer
                                 ),
@@ -200,7 +203,21 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(alert.title, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(alert.description, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f), fontSize = 11.sp)
+                                        Text(
+                                            alert.headline ?: alert.instruction ?: alert.areaDesc ?: alert.description,
+                                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.82f),
+                                            fontSize = 11.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            "${alert.severity.uppercase()}  ·  VIEW DETAILS",
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = 0.5.sp,
+                                            modifier = Modifier.padding(top = 5.dp)
+                                        )
                                     }
                                     IconButton(onClick = { viewModel.dismissAlertBanner(alert.id) }) {
                                         Icon(Icons.Filled.Close, contentDescription = "Dismiss Banner", tint = MaterialTheme.colorScheme.onErrorContainer)
@@ -238,18 +255,14 @@ fun HomeScreen(
                         }
 
                         // Precompute display values
-                        val currentFinalVal = if (isCelsius) state.currentTemp else (state.currentTemp * 1.8 + 32)
-                        val activeApparent = if (isCelsius) state.feelsLike else (state.feelsLike * 1.8 + 32)
+                        val currentFinalVal = UnitFormatter.tempFromC(state.currentTemp, isCelsius)
+                        val activeApparent = UnitFormatter.tempFromC(state.feelsLike, isCelsius)
                         val highC = state.dailyForecast.firstOrNull()?.values?.temperatureMax ?: 0.0
                         val lowC = state.dailyForecast.firstOrNull()?.values?.temperatureMin ?: 0.0
-                        val highFinal = if (isCelsius) highC else (highC * 1.8 + 32)
-                        val lowFinal = if (isCelsius) lowC else (lowC * 1.8 + 32)
+                        val highFinal = UnitFormatter.tempFromC(highC, isCelsius)
+                        val lowFinal = UnitFormatter.tempFromC(lowC, isCelsius)
                         val windUnit = PreferencesHelper.getWindSpeedUnit(context)
-                        val speedValue = when (windUnit) {
-                            "km/h" -> "${(state.windSpeed * 3.6).toInt()} km/h"
-                            "knots" -> "${(state.windSpeed * 1.94).toInt()} kt"
-                            else -> "${(state.windSpeed * 2.237).toInt()} mph"
-                        }
+                        val speedValue = UnitFormatter.windFromMs(state.windSpeed, windUnit)
                         val pressureTrend = remember(state.hourlyForecast) {
                             computePressureTrend(state.hourlyForecast)
                         }
@@ -257,13 +270,7 @@ fun HomeScreen(
                         val pressureValue = pressureTrend?.let { "$pressureFormatted ${it.symbol}" } ?: pressureFormatted
                         val uvCategory = uvHealthLabel(state.dailyForecast.firstOrNull()?.values?.uvHealthConcernMax)
                         val peakGustMs = state.dailyForecast.firstOrNull()?.values?.windGustMax
-                        val peakGustLabel = peakGustMs?.let {
-                            when (windUnit) {
-                                "km/h" -> "${(it * 3.6).toInt()} km/h"
-                                "knots" -> "${(it * 1.94).toInt()} kt"
-                                else -> "${(it * 2.237).toInt()} mph"
-                            }
-                        } ?: "—"
+                        val peakGustLabel = peakGustMs?.let { UnitFormatter.windFromMs(it, windUnit) } ?: "—"
                         val ceilingKm = state.hourlyForecast.firstOrNull()?.values?.cloudCeiling
                         val ceilingLabel = ceilingKm?.let {
                             "Ceiling " + UnitFormatter.distanceKmFractional(it, measurementSystem)
@@ -361,17 +368,8 @@ fun HomeScreen(
                         val currentHour = state.hourlyForecast.firstOrNull()?.values
                         val gustC = currentHour?.windGust
                         val dewC = currentHour?.dewPoint
-                        val gustStr = gustC?.let {
-                            when (windUnit) {
-                                "km/h" -> "${(it * 3.6).toInt()} km/h"
-                                "knots" -> "${(it * 1.94).toInt()} kt"
-                                else -> "${(it * 2.237).toInt()} mph"
-                            }
-                        } ?: "—"
-                        val dewStr = dewC?.let {
-                            val v = if (isCelsius) it else (it * 1.8 + 32)
-                            "${v.toInt()}°"
-                        } ?: "—"
+                        val gustStr = gustC?.let { UnitFormatter.windFromMs(it, windUnit) } ?: "—"
+                        val dewStr = dewC?.let { "${UnitFormatter.tempFromC(it, isCelsius).toInt()}°" } ?: "—"
                         val today = state.dailyForecast.firstOrNull()?.values
                         val sunriseStr = formatTimeUtc(today?.sunriseTime)
                         val sunsetStr = formatTimeUtc(today?.sunsetTime)
@@ -584,8 +582,8 @@ fun HomeScreen(
 
                                     val tMin = day.values.temperatureMin ?: 0.0
                                     val tMax = day.values.temperatureMax ?: 0.0
-                                    val minValFinal = if (isCelsius) tMin else (tMin * 1.8 + 32)
-                                    val maxValFinal = if (isCelsius) tMax else (tMax * 1.8 + 32)
+                                    val minValFinal = UnitFormatter.tempFromC(tMin, isCelsius)
+                                    val maxValFinal = UnitFormatter.tempFromC(tMax, isCelsius)
                                     val precipPct = day.values.precipitationProbabilityAvg
                                         ?: day.values.precipitationProbability
                                         ?: 0.0
@@ -857,17 +855,10 @@ private fun DayDetailPanel(
     val v = day.values
 
     fun fmtTemp(c: Double?) = c?.let {
-        val final = if (isCelsius) it else (it * 1.8 + 32)
-        "${final.toInt()}°"
+        "${UnitFormatter.tempFromC(it, isCelsius).toInt()}°"
     } ?: "—"
 
-    fun fmtWind(ms: Double?) = ms?.let {
-        when (windUnit) {
-            "km/h" -> "${(it * 3.6).toInt()} km/h"
-            "knots" -> "${(it * 1.94).toInt()} kt"
-            else -> "${(it * 2.237).toInt()} mph"
-        }
-    } ?: "—"
+    fun fmtWind(ms: Double?) = ms?.let { UnitFormatter.windFromMs(it, windUnit) } ?: "—"
 
     val feelsMin = fmtTemp(v.temperatureApparentMin)
     val feelsMax = fmtTemp(v.temperatureApparentMax)

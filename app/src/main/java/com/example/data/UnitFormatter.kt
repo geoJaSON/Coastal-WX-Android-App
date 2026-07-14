@@ -6,6 +6,17 @@ package com.example.data
  */
 object UnitFormatter {
 
+    /** Temperature: APIs return °C; converts to the user's display unit. */
+    fun tempFromC(c: Double, isCelsius: Boolean): Double =
+        if (isCelsius) c else c * 1.8 + 32
+
+    /** Wind speed: APIs return m/s; formats to the wind-unit preference (mph, km/h, knots). */
+    fun windFromMs(ms: Double, unit: String): String = when (unit) {
+        "km/h" -> "${(ms * 3.6).toInt()} km/h"
+        "knots" -> "${(ms * 1.94384).toInt()} kt"
+        else -> "${(ms * 2.23694).toInt()} mph"
+    }
+
     /** Pressure: API returns hPa. Imperial users prefer inches of mercury. */
     fun pressure(hpa: Double, system: String): String =
         if (system == "imperial") "${"%.2f".format(hpa / 33.8639)} inHg"

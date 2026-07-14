@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.ui.screens.AlertDetailScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StormDetailScreen
@@ -37,11 +39,33 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
 @Composable
 fun MainAppNavigation(
     viewModel: MainViewModel,
+    pendingAlertId: String? = null,
+    onAlertNavigationConsumed: () -> Unit = {},
+    pendingDestination: String? = null,
+    onDestinationNavigationConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navController = rememberNavController()
     val weatherState by viewModel.weatherState.collectAsState()
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    LaunchedEffect(pendingAlertId) {
+        pendingAlertId?.takeIf { it.isNotBlank() }?.let { alertId ->
+            navController.navigate("alert_detail/${Uri.encode(alertId)}") {
+                launchSingleTop = true
+            }
+            onAlertNavigationConsumed()
+        }
+    }
+
+    LaunchedEffect(pendingDestination, pendingAlertId) {
+        if (pendingAlertId == null && pendingDestination == Screen.Tropics.route) {
+            navController.navigate(Screen.Tropics.route) {
+                launchSingleTop = true
+            }
+            onDestinationNavigationConsumed()
+        }
+    }
 
     // Dynamic temperature styling gradients shift based on conditions
     val themeGradient = remember(weatherState, isDark) {
@@ -107,14 +131,16 @@ fun MainAppNavigation(
                 composable(Screen.Home.route) {
                     HomeScreen(
                         viewModel = viewModel,
-                        onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                        onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                        onNavigateToAlertDetail = { alertId ->
+                            navController.navigate("alert_detail/${Uri.encode(alertId)}")
+                        }
                     )
                 }
                 composable(Screen.Tropics.route) {
                     TropicsScreen(
                         viewModel = viewModel,
-                        onNavigateToStormDetail = { stormId -> navController.navigate("storm_detail/$stormId") },
-                        onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                        onNavigateToStormDetail = { stormId -> navController.navigate("storm_detail/$stormId") }
                     )
                 }
                 composable(Screen.Settings.route) {
@@ -124,6 +150,16 @@ fun MainAppNavigation(
                     val stormId = backStackEntry.arguments?.getString("stormId") ?: ""
                     StormDetailScreen(
                         stormId = stormId,
+                        viewModel = viewModel,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("alert_detail/{alertId}") { backStackEntry ->
+                    val alertId = Uri.decode(
+                        backStackEntry.arguments?.getString("alertId").orEmpty()
+                    )
+                    AlertDetailScreen(
+                        alertId = alertId,
                         viewModel = viewModel,
                         onNavigateBack = { navController.popBackStack() }
                     )
