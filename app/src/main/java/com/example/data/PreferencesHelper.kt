@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.example.widget.WeatherWidgetProvider
 
 object PreferencesHelper {
     private const val SECURE_PREFS_NAME = "aero_weather_secure_prefs"
@@ -54,6 +55,7 @@ object PreferencesHelper {
 
     fun saveTempUnit(context: Context, unit: String) {
         getNormalPrefs(context).edit().putString("temp_unit", unit).apply()
+        repaintWidgets(context)
     }
 
     fun getWindSpeedUnit(context: Context): String {
@@ -62,6 +64,7 @@ object PreferencesHelper {
 
     fun saveWindSpeedUnit(context: Context, unit: String) {
         getNormalPrefs(context).edit().putString("wind_unit", unit).apply()
+        repaintWidgets(context)
     }
 
     /**
@@ -80,6 +83,7 @@ object PreferencesHelper {
 
     fun saveMeasurementSystem(context: Context, system: String) {
         getNormalPrefs(context).edit().putString("measurement_system", system).apply()
+        repaintWidgets(context)
     }
 
     fun getRefreshIntervalMinutes(context: Context): Int {
@@ -136,5 +140,17 @@ object PreferencesHelper {
 
     fun saveLastSuccessfulStormSyncMillis(context: Context, millis: Long) {
         getNormalPrefs(context).edit().putLong("last_successful_storm_sync", millis).apply()
+    }
+
+    /**
+     * Widgets are only re-rendered by a data sync, so without this a unit change sat
+     * invisible on the home screen until the next forecast refresh.
+     */
+    private fun repaintWidgets(context: Context) {
+        try {
+            WeatherWidgetProvider.triggerUpdate(context.applicationContext)
+        } catch (_: Exception) {
+            // A preference write must never fail because a widget could not be redrawn.
+        }
     }
 }

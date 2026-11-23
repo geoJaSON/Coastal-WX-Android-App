@@ -7,4 +7,23 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Widget text ramp. Four steps on one base (slate-50) replacing the nine ad-hoc
+         alphas across three hues the layouts used to mix. Roles mirror the app's
+         onSurface / onSurfaceVariant / primary. -->
+    <color name="widget_text_primary">#FFF8FAFC</color>
+    <color name="widget_text_secondary">#B8F8FAFC</color>
+    <color name="widget_text_tertiary">#85F8FAFC</color>
+    <!-- SleekDarkPrimary - the app's colorScheme.primary in dark. Used for all-caps eyebrows
+         so the widget reads as the same product as the app's section headers. -->
+    <color name="widget_text_accent">#FFA8C8F9</color>
+
+    <!-- Precipitation probability. The app uses #0284C7 on light surfaces; this is the same
+         family lightened for the widget's dark gradients. -->
+    <color name="widget_precip">#FF7DD3FC</color>
+
+    <color name="widget_divider">#1FF8FAFC</color>
+    <color name="widget_panel_fill">#14F8FAFC</color>
+    <color name="widget_panel_stroke">#24F8FAFC</color>
+    <color name="widget_alert">#FFF04438</color>
 </resources>

@@ -204,8 +204,11 @@ class WeatherRepository private constructor(private val context: Context) {
             return cachedStormResult("The National Hurricane Center could not be reached.")
         }
 
+        // CurrentStorms.json combines Atlantic, Eastern Pacific, and Central Pacific systems.
+        // Filter before product enrichment so Pacific advisories are neither shown nor downloaded.
+        val atlanticStorms = rawStorms.filter { NHCService.isAtlanticStorm(it.id) }
         val cachedById = db.stormCacheDao.getAllStorms().associateBy { it.id }
-        val storms = rawStorms.mapNotNull { raw ->
+        val storms = atlanticStorms.mapNotNull { raw ->
             val base = NHCService.toStormDetail(raw) ?: return@mapNotNull null
             enrichWithProducts(base, raw, cachedById[base.id])
         }
@@ -287,31 +290,33 @@ class WeatherRepository private constructor(private val context: Context) {
     }
 
     private suspend fun cachedStormDetails(): List<StormDetail> =
-        db.stormCacheDao.getAllStorms().map { c ->
-            StormDetail(
-                id = c.id,
-                name = c.name,
-                basin = c.basin,
-                type = c.type,
-                category = c.category,
-                latitude = c.latitude,
-                longitude = c.longitude,
-                windSpeedKts = c.windSpeedKt,
-                pressureMb = c.pressureMb,
-                direction = c.direction,
-                speedMph = c.speedMph,
-                trackPoints = try {
-                    trackAdapter.fromJson(c.trackJson) ?: emptyList()
-                } catch (e: Exception) {
-                    emptyList()
-                },
-                windRadii = null,
-                watchWarningAreas = emptyList(),
-                advisoryText = c.advisoryText,
-                discussionText = c.discussionText,
-                detailUrl = c.detailUrl
-            )
-        }
+        db.stormCacheDao.getAllStorms()
+            .filter { NHCService.isAtlanticStorm(it.id) }
+            .map { c ->
+                StormDetail(
+                    id = c.id,
+                    name = c.name,
+                    basin = c.basin,
+                    type = c.type,
+                    category = c.category,
+                    latitude = c.latitude,
+                    longitude = c.longitude,
+                    windSpeedKts = c.windSpeedKt,
+                    pressureMb = c.pressureMb,
+                    direction = c.direction,
+                    speedMph = c.speedMph,
+                    trackPoints = try {
+                        trackAdapter.fromJson(c.trackJson) ?: emptyList()
+                    } catch (e: Exception) {
+                        emptyList()
+                    },
+                    windRadii = null,
+                    watchWarningAreas = emptyList(),
+                    advisoryText = c.advisoryText,
+                    discussionText = c.discussionText,
+                    detailUrl = c.detailUrl
+                )
+            }
 
     /**
      * Drops proximity alerts for storms no longer in the feed — including the

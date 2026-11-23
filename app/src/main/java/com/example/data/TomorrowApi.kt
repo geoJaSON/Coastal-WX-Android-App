@@ -317,7 +317,7 @@ object WeatherCodeMapper {
             6200 -> "Light Freezing Rain"
             6201 -> "Heavy Freezing Rain"
             7000 -> "Ice Pellets"
-            7100 -> "Light Ice Pellets"
+            7100, 7102 -> "Light Ice Pellets"
             7101 -> "Heavy Ice Pellets"
             8000 -> "Thunderstorm"
             else -> "Partly Cloudy"

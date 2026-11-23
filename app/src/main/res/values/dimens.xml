@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Radius ladder: outer 24dp, inner panel 16dp (= 24 - 8dp panel padding), pill fully
+         round. Aliased through dimens so each shape is defined exactly once and values-v31
+         can swap in the launcher's own radii. -->
+    <dimen name="widget_bg_radius">24dp</dimen>
+    <dimen name="widget_panel_radius">16dp</dimen>
+</resources>

@@ -1,105 +1,252 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Compact widget: current conditions on the left, a 3-day mini forecast on the right.
+     Every TextView sets includeFontPadding="false" - the default phantom leading cost about
+     4dp per line and was a large part of the dead space in the previous layout.
+     Note that <View> and <Space> are NOT legal inside RemoteViews (neither class carries the
+     @RemoteView annotation), so the column rule is a childless FrameLayout. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_cloud"
+    android:baselineAligned="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
     android:paddingHorizontal="12dp"
-    android:paddingVertical="9dp">
+    android:paddingVertical="6dp">
 
-    <ImageView
-        android:id="@+id/widget_icon"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:layout_alignParentStart="true"
-        android:layout_centerVertical="true"
-        android:contentDescription="@string/widget_condition_description"
-        android:src="@drawable/ic_widget_cloud" />
-
-    <TextView
-        android:id="@+id/widget_temp"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerVertical="true"
-        android:layout_marginStart="8dp"
-        android:layout_toEndOf="@id/widget_icon"
-        android:includeFontPadding="false"
-        android:text="@string/widget_temperature_placeholder"
-        android:textColor="#FFFFFFFF"
-        android:textSize="30sp"
-        android:textStyle="bold" />
-
+    <!-- Current conditions -->
     <LinearLayout
-        android:id="@+id/widget_summary"
+        android:id="@+id/widget_current"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerVertical="true"
-        android:layout_marginStart="10dp"
-        android:layout_toEndOf="@id/widget_temp"
-        android:layout_toStartOf="@id/widget_actions"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/widget_location"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="@string/widget_setup_placeholder"
-            android:textColor="#FFF8FAFC"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/widget_icon"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:contentDescription="@string/widget_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <!-- sans-serif-light with negative tracking mirrors the 80sp Light hero
+                 temperature in the app, the most identity-defining type choice it makes. -->
+            <TextView
+                android:id="@+id/widget_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="sans-serif-light"
+                android:includeFontPadding="false"
+                android:letterSpacing="-0.03"
+                android:maxLines="1"
+                android:text="@string/widget_temperature_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="32sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/widget_desc"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
+            android:includeFontPadding="false"
             android:maxLines="1"
+            android:maxWidth="112dp"
             android:text="@string/widget_brand"
-            android:textColor="#DDE2E8F0"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_updated"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:maxLines="1"
-            android:text=""
-            android:textColor="#AAE2E8F0"
+            android:textColor="@color/widget_text_secondary"
             android:textSize="11sp" />
     </LinearLayout>
 
-    <RelativeLayout
-        android:id="@+id/widget_actions"
-        android:layout_width="32dp"
+    <FrameLayout
+        android:id="@+id/widget_divider"
+        android:layout_width="1dp"
         android:layout_height="match_parent"
-        android:layout_alignParentEnd="true">
+        android:layout_marginHorizontal="10dp"
+        android:layout_marginVertical="4dp"
+        android:background="@color/widget_divider" />
+
+    <!-- Mini forecast -->
+    <LinearLayout
+        android:id="@+id/widget_forecast"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/widget_f1_col"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_f1_day"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.05"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textAllCaps="true"
+                android:textColor="@color/widget_text_accent"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/widget_f1_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="1dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_f1_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_f2_col"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_f2_day"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.05"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textAllCaps="true"
+                android:textColor="@color/widget_text_accent"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/widget_f2_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="1dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_f2_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_f3_col"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_f3_day"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.05"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textAllCaps="true"
+                android:textColor="@color/widget_text_accent"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/widget_f3_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="1dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_f3_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Vertical LinearLayout, not RelativeLayout: RelativeLayout siblings do not push each
+         other apart, so at the declared 54dp minimum the alert badge used to sit on top of
+         the lower half of the refresh button's tap target. -->
+    <LinearLayout
+        android:id="@+id/widget_actions"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
 
         <ImageButton
             android:id="@+id/widget_refresh"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentTop="true"
-            android:background="@android:color/transparent"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:background="@drawable/widget_refresh_bg"
             android:contentDescription="@string/widget_refresh_description"
-            android:padding="7dp"
+            android:padding="5dp"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_widget_refresh" />
 
         <TextView
             android:id="@+id/widget_storm_badge"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_alignParentBottom="true"
-            android:layout_alignParentEnd="true"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_marginTop="2dp"
             android:background="@drawable/widget_alert_pill"
             android:gravity="center"
+            android:includeFontPadding="false"
             android:text="@string/widget_alert_mark"
             android:textColor="#FFFFFFFF"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:visibility="gone" />
-    </RelativeLayout>
-</RelativeLayout>
+    </LinearLayout>
+</LinearLayout>

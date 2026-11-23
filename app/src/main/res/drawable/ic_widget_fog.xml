@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 2000/2100 Fog. Mirrors WeatherIcon.kt's drawFogBands (lengths 0.80/0.60/0.70, round caps,
+     no cloud) so fog is not indistinguishable from cloudy - it is a headline coastal condition. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:pathData="M3.6,6.8h16.8" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeAlpha="0.78"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:pathData="M5.6,12h12.8" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:pathData="M4.6,17.2h14.8" />
+</vector>

@@ -124,15 +124,15 @@ private fun QuietBasinsContent(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            if (isCached) "No systems were present in the last verified NHC update."
-            else "No systems currently have active NHC advisories.",
+            if (isCached) "No Atlantic systems were present in the last verified NHC update."
+            else "No Atlantic systems currently have active NHC advisories.",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "This view tracks systems with active advisories. Tropical outlook disturbances are not included yet.",
+            "This view tracks Atlantic systems with active advisories. Pacific systems and tropical outlook disturbances are not included.",
             fontSize = 12.sp,
             lineHeight = 17.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
@@ -157,10 +157,6 @@ private fun QuietBasinsContent(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 SeasonRow("Atlantic Basin", "Jun 1 – Nov 30")
-                Spacer(modifier = Modifier.height(6.dp))
-                SeasonRow("Eastern Pacific Basin", "May 15 – Nov 30")
-                Spacer(modifier = Modifier.height(6.dp))
-                SeasonRow("Central Pacific Basin", "Jun 1 – Nov 30")
             }
         }
 
@@ -377,7 +373,7 @@ private fun TropicalErrorContent(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "$message We cannot confirm that monitored basins are clear.",
+            "$message We cannot confirm that the Atlantic basin is clear.",
             fontSize = 13.sp,
             lineHeight = 19.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

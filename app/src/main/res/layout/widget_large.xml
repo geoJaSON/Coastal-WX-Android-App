@@ -1,261 +1,727 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Large widget. Three bands: a full-width header, a hero/forecast split, and an hourly
+     strip. Everything sets includeFontPadding="false"; the previous layout stacked six
+     TextViews with default leading in the left column, which alone wasted about 25dp -
+     a full text row - and left the content floating in a tall centre-gravity box.
+     Dividers are childless FrameLayouts because <View> is not @RemoteView-annotated and
+     therefore cannot be inflated inside a widget. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_cloud"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
 
+    <!-- Header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:baselineAligned="false"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/widget_icon"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:contentDescription="@string/widget_condition_description"
-            android:src="@drawable/ic_widget_cloud" />
+        <TextView
+            android:id="@+id/widget_location"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:letterSpacing="0.09"
+            android:maxLines="1"
+            android:text="@string/widget_open_placeholder"
+            android:textAllCaps="true"
+            android:textColor="@color/widget_text_accent"
+            android:textSize="11sp"
+            android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_temp"
+            android:id="@+id/widget_updated"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
+            android:ellipsize="end"
             android:includeFontPadding="false"
-            android:text="@string/widget_temperature_placeholder"
-            android:textColor="#FFFFFFFF"
-            android:textSize="44sp"
-            android:textStyle="bold" />
+            android:maxLines="1"
+            android:text=""
+            android:textColor="@color/widget_text_tertiary"
+            android:textSize="10sp" />
+
+        <ImageButton
+            android:id="@+id/widget_refresh"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/widget_refresh_bg"
+            android:contentDescription="@string/widget_refresh_description"
+            android:padding="5dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_widget_refresh" />
+    </LinearLayout>
+
+    <!-- Hero conditions + multi-day outlook -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
 
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:paddingEnd="12dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/widget_icon"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:contentDescription="@string/widget_condition_description"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_cloud" />
+
+                <TextView
+                    android:id="@+id/widget_temp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:fontFamily="sans-serif-light"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="-0.03"
+                    android:maxLines="1"
+                    android:text="@string/widget_temperature_placeholder"
+                    android:textColor="@color/widget_text_primary"
+                    android:textSize="44sp" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/widget_cond"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="@string/widget_brand"
-                android:textColor="#FFFFFFFF"
-                android:textSize="14sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/widget_hilo"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
                 android:text="@string/widget_hilo_placeholder"
-                android:textColor="#DDE2E8F0"
-                android:textSize="11sp" />
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/widget_location"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:id="@+id/widget_metrics_row"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="@string/widget_open_placeholder"
-                android:textColor="#CCF1F5F9"
-                android:textSize="11sp"
-                android:textStyle="bold" />
+                android:layout_marginTop="8dp"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/widget_updated"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:maxLines="1"
-                android:text=""
-                android:textColor="#99E2E8F0"
-                android:textSize="11sp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/widget_feels_like"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="@string/widget_feels_placeholder"
+                        android:textColor="@color/widget_text_secondary"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/widget_humidity"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:gravity="end"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="@string/widget_humidity_short_placeholder"
+                        android:textColor="@color/widget_text_secondary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/widget_wind"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="@string/widget_wind_placeholder"
+                        android:textColor="@color/widget_text_secondary"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/widget_uv"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:gravity="end"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="@string/widget_uv_placeholder"
+                        android:textColor="@color/widget_text_secondary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/widget_refresh"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="@string/widget_refresh_description"
-            android:padding="8dp"
-            android:src="@drawable/ic_widget_refresh" />
+        <LinearLayout
+            android:id="@+id/widget_forecast_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@drawable/widget_forecast_panel"
+            android:orientation="vertical"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp">
+
+            <TextView
+                android:id="@+id/widget_forecast_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.05"
+                android:maxLines="1"
+                android:text="@string/widget_forecast_label"
+                android:textAllCaps="true"
+                android:textColor="@color/widget_text_accent"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/widget_day1_row"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_day1_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.85"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_dash_placeholder"
+                    android:textColor="@color/widget_text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/widget_day1_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/widget_forecast_condition_description"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_cloud" />
+
+                <TextView
+                    android:id="@+id/widget_day1_precip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_precip"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_day1_hilo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.45"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_forecast_temp_placeholder"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/widget_day2_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider" />
+
+            <LinearLayout
+                android:id="@+id/widget_day2_row"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_day2_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.85"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_dash_placeholder"
+                    android:textColor="@color/widget_text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/widget_day2_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/widget_forecast_condition_description"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_cloud" />
+
+                <TextView
+                    android:id="@+id/widget_day2_precip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_precip"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_day2_hilo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.45"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_forecast_temp_placeholder"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/widget_day3_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider" />
+
+            <LinearLayout
+                android:id="@+id/widget_day3_row"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_day3_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.85"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_dash_placeholder"
+                    android:textColor="@color/widget_text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/widget_day3_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/widget_forecast_condition_description"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_cloud" />
+
+                <TextView
+                    android:id="@+id/widget_day3_precip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_precip"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_day3_hilo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.45"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_forecast_temp_placeholder"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/widget_day4_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider" />
+
+            <!-- The cache already holds 5 daily entries; the old layout showed 3 and threw
+                 the 4th away. -->
+            <LinearLayout
+                android:id="@+id/widget_day4_row"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_day4_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.85"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_dash_placeholder"
+                    android:textColor="@color/widget_text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/widget_day4_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/widget_forecast_condition_description"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_cloud" />
+
+                <TextView
+                    android:id="@+id/widget_day4_precip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_precip"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_day4_hilo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.45"
+                    android:gravity="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_forecast_temp_placeholder"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_metrics_divider"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="8dp"
-        android:background="#2AFFFFFF"
-        android:text="" />
-
-    <LinearLayout
-        android:id="@+id/widget_metrics_row"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/widget_feels_like"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/widget_feels_placeholder"
-            android:textColor="#DDE2E8F0"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_wind"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="@string/widget_wind_placeholder"
-            android:textColor="#DDE2E8F0"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_humidity"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="end"
-            android:text="@string/widget_humidity_placeholder"
-            android:textColor="#DDE2E8F0"
-            android:textSize="11sp" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/widget_forecast_divider"
+    <!-- Hourly strip. 24 hours are already cached and were unused by either widget; this
+         mirrors the app's UP NEXT section and is what people actually glance at. -->
+    <FrameLayout
+        android:id="@+id/widget_hourly_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="8dp"
-        android:layout_marginBottom="6dp"
-        android:background="#2AFFFFFF"
-        android:text="" />
+        android:background="@color/widget_divider" />
 
     <LinearLayout
-        android:id="@+id/widget_day1_row"
+        android:id="@+id/widget_hourly"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
+        android:layout_marginTop="6dp"
+        android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/widget_day1_name"
-            android:layout_width="52dp"
-            android:layout_height="wrap_content"
-            android:text="@string/widget_dash_placeholder"
-            android:textColor="#FFF8FAFC"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/widget_day1_cond"
+        <LinearLayout
+            android:id="@+id/widget_h1_col"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text=""
-            android:textColor="#CCE2E8F0"
-            android:textSize="11sp" />
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/widget_day1_hilo"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#FFE2E8F0"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+            <TextView
+                android:id="@+id/widget_h1_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textColor="@color/widget_text_tertiary"
+                android:textSize="10sp" />
 
-    <LinearLayout
-        android:id="@+id/widget_day2_row"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+            <ImageView
+                android:id="@+id/widget_h1_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
 
-        <TextView
-            android:id="@+id/widget_day2_name"
-            android:layout_width="52dp"
-            android:layout_height="wrap_content"
-            android:text="@string/widget_dash_placeholder"
-            android:textColor="#FFF8FAFC"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widget_h1_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/widget_day2_cond"
+        <LinearLayout
+            android:id="@+id/widget_h2_col"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text=""
-            android:textColor="#CCE2E8F0"
-            android:textSize="11sp" />
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/widget_day2_hilo"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#FFE2E8F0"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+            <TextView
+                android:id="@+id/widget_h2_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textColor="@color/widget_text_tertiary"
+                android:textSize="10sp" />
 
-    <LinearLayout
-        android:id="@+id/widget_day3_row"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+            <ImageView
+                android:id="@+id/widget_h2_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
 
-        <TextView
-            android:id="@+id/widget_day3_name"
-            android:layout_width="52dp"
-            android:layout_height="wrap_content"
-            android:text="@string/widget_dash_placeholder"
-            android:textColor="#FFF8FAFC"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widget_h2_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/widget_day3_cond"
+        <LinearLayout
+            android:id="@+id/widget_h3_col"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text=""
-            android:textColor="#CCE2E8F0"
-            android:textSize="11sp" />
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/widget_day3_hilo"
-            android:layout_width="wrap_content"
+            <TextView
+                android:id="@+id/widget_h3_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textColor="@color/widget_text_tertiary"
+                android:textSize="10sp" />
+
+            <ImageView
+                android:id="@+id/widget_h3_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_h3_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_h4_col"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#FFE2E8F0"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_h4_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textColor="@color/widget_text_tertiary"
+                android:textSize="10sp" />
+
+            <ImageView
+                android:id="@+id/widget_h4_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_h4_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_h5_col"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_h5_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textColor="@color/widget_text_tertiary"
+                android:textSize="10sp" />
+
+            <ImageView
+                android:id="@+id/widget_h5_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_h5_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_h6_col"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_h6_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_placeholder"
+                android:textColor="@color/widget_text_tertiary"
+                android:textSize="10sp" />
+
+            <ImageView
+                android:id="@+id/widget_h6_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@string/widget_forecast_condition_description"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_cloud" />
+
+            <TextView
+                android:id="@+id/widget_h6_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_dash_temp_placeholder"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
@@ -266,8 +732,9 @@
         android:background="@drawable/widget_alert_pill"
         android:ellipsize="end"
         android:gravity="center"
+        android:includeFontPadding="false"
         android:maxLines="1"
-        android:paddingHorizontal="8dp"
+        android:paddingHorizontal="10dp"
         android:paddingVertical="4dp"
         android:text="@string/widget_alert_placeholder"
         android:textColor="#FFFFFFFF"

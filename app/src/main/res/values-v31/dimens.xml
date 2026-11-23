@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ launchers clip widgets to the system radius. Matching it keeps the
+         background from peeking past the clipped corner, and keeps the nested forecast
+         panel concentric with it. -->
+    <dimen name="widget_bg_radius">@android:dimen/system_app_widget_background_radius</dimen>
+    <dimen name="widget_panel_radius">@android:dimen/system_app_widget_inner_radius</dimen>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Clear (1000) between sunset and sunrise. Without this the widget drew a blazing sun at
+     2 AM - 13 of the first 24 cached hours carry code 1000, most of them overnight.
+     Single-contour crescent, so no fill-rule tricks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11.9,2.3C7.1,2.6 3.3,6.6 3.3,11.5c0,5.1 4.1,9.2 9.2,9.2 3.9,0 7.3,-2.5 8.6,-6 -1.1,0.5 -2.3,0.8 -3.6,0.8 -4.5,0 -8.2,-3.7 -8.2,-8.2 0,-1.9 0.6,-3.6 1.6,-5z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.72"
+        android:pathData="M18.9,2.6l0.62,1.55 1.55,0.62 -1.55,0.62 -0.62,1.55 -0.62,-1.55 -1.55,-0.62 1.55,-0.62zM15.4,7.4l0.4,1.0 1.0,0.4 -1.0,0.4 -0.4,1.0 -0.4,-1.0 -1.0,-0.4 1.0,-0.4z" />
+</vector>

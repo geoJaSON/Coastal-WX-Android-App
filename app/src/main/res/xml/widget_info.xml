@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- WorkManager drives data freshness; updatePeriodMillis is only an OS-level backstop
-     (Android clamps it to a 30-minute minimum anyway). -->
+     (Android clamps it to a 30-minute minimum anyway).
+
+     minWidth/minHeight are what Android 8-11 use to place the widget - targetCellWidth and
+     targetCellHeight are API 31. The old 110x54dp declaration could not fit conditions and a
+     forecast side by side, so it is raised to the size this layout actually needs, with
+     minResizeWidth/Height marking how far it degrades gracefully. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="110dp"
-    android:minHeight="54dp"
-    android:targetCellWidth="3"
+    android:minWidth="180dp"
+    android:minHeight="64dp"
+    android:minResizeWidth="150dp"
+    android:minResizeHeight="54dp"
+    android:targetCellWidth="4"
     android:targetCellHeight="1"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_compact"

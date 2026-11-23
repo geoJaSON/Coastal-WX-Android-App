@@ -103,4 +103,13 @@ class NHCTrackParserTest {
         assertNull(NHCService.normalizeAdvNum(null))
         assertNull(NHCService.normalizeAdvNum("000"))
     }
+
+    @Test
+    fun `Atlantic activity filter excludes Pacific storm ids`() {
+        assertTrue(NHCService.isAtlanticStorm("AL032026"))
+        assertTrue(NHCService.isAtlanticStorm("al042026"))
+        assertFalse(NHCService.isAtlanticStorm("EP032026"))
+        assertFalse(NHCService.isAtlanticStorm("CP012026"))
+        assertFalse(NHCService.isAtlanticStorm(""))
+    }
 }

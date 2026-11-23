@@ -1,8 +1,9 @@
 <resources>
     <string name="app_name">Coastal WX</string>
-    <string name="widget_compact_description">Current temperature and conditions at a glance.</string>
-    <string name="widget_large_description">Current conditions, 3-day outlook, and tropical storm alerts.</string>
+    <string name="widget_compact_description">Current conditions beside a 3-day mini forecast.</string>
+    <string name="widget_large_description">Current conditions, a 4-day outlook and the next few hours.</string>
     <string name="widget_condition_description">Current weather condition</string>
+    <string name="widget_forecast_condition_description">Forecast weather condition</string>
     <string name="widget_refresh_description">Refresh weather</string>
     <string name="widget_temperature_placeholder">--°</string>
     <string name="widget_setup_placeholder">Tap to set up</string>
@@ -13,6 +14,20 @@
     <string name="widget_feels_placeholder">Feels --°</string>
     <string name="widget_wind_placeholder">Wind --</string>
     <string name="widget_humidity_placeholder" formatted="false">Humidity --%</string>
+    <string name="widget_humidity_short_placeholder" formatted="false">RH --%</string>
     <string name="widget_dash_placeholder">—</string>
+    <string name="widget_forecast_label">NEXT 4 DAYS</string>
+    <string name="widget_forecast_temp_placeholder">--°/--°</string>
     <string name="widget_alert_placeholder">WEATHER ALERT</string>
+    <string name="widget_forecast_label_short">OUTLOOK</string>
+    <string name="widget_dash_temp_placeholder">--°</string>
+    <string name="widget_uv_placeholder">UV --</string>
+    <string name="widget_loading">Tap refresh to load weather</string>
+    <string name="widget_loading_short">No data yet</string>
+    <string name="widget_unavailable_short">Unavailable</string>
+    <string name="widget_no_location_short">No location</string>
+    <string name="widget_unavailable">Weather update unavailable</string>
+    <string name="widget_retry">Tap refresh to retry</string>
+    <string name="widget_refreshing">Refreshing…</string>
+    <string name="widget_no_location">Open the app to pick a location</string>
 </resources>

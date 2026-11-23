@@ -133,6 +133,10 @@ object NHCService {
         else -> "Atlantic"
     }
 
+    /** This app monitors the Atlantic basin; NHC's combined feed also includes Pacific systems. */
+    fun isAtlanticStorm(stormId: String): Boolean =
+        stormId.startsWith("al", ignoreCase = true)
+
     /** Saffir-Simpson category from sustained winds in knots; 0 below hurricane force. */
     fun categoryFromKnots(kts: Double): Int = when {
         kts >= 137 -> 5

@@ -7,14 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Fill
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
 import kotlin.math.sin
@@ -33,16 +29,16 @@ fun WeatherConditionIcon(
         label = "sun_rotation"
     )
 
-    val rainOffset by infiniteTransition.animateFloat(
+    val rainProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 14f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
         label = "rain_drop"
     )
 
-    val snowOffset by infiniteTransition.animateFloat(
+    val snowProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 10f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
         label = "snow_drop"
     )
@@ -107,7 +103,7 @@ fun WeatherConditionIcon(
             4000 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF64748B), colorBody = Color(0xFF94A3B8))
-                drawRainDrops(cx, cy, w, h, rainOffset,
+                drawRainDrops(cx, cy, w, h, rainProgress,
                     dropColor = Color(0xFF7DD3FC), count = 2, heaviness = 0.7f)
             }
 
@@ -115,7 +111,7 @@ fun WeatherConditionIcon(
             4200 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF475569), colorBody = Color(0xFF64748B))
-                drawRainDrops(cx, cy, w, h, rainOffset,
+                drawRainDrops(cx, cy, w, h, rainProgress,
                     dropColor = Color(0xFF38BDF8), count = 3, heaviness = 0.85f)
             }
 
@@ -123,7 +119,7 @@ fun WeatherConditionIcon(
             4001 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF334155), colorBody = Color(0xFF475569))
-                drawRainDrops(cx, cy, w, h, rainOffset,
+                drawRainDrops(cx, cy, w, h, rainProgress,
                     dropColor = Color(0xFF38BDF8), count = 3, heaviness = 1.0f)
             }
 
@@ -131,7 +127,7 @@ fun WeatherConditionIcon(
             4201 -> {
                 drawCloud(cx, cy - h * 0.08f, w, h,
                     colorShadow = Color(0xFF1E293B), colorBody = Color(0xFF334155))
-                drawRainDrops(cx, cy, w, h, rainOffset,
+                drawRainDrops(cx, cy, w, h, rainProgress,
                     dropColor = Color(0xFF0EA5E9), count = 4, heaviness = 1.2f)
             }
 
@@ -155,7 +151,7 @@ fun WeatherConditionIcon(
             5001 -> {
                 drawCloud(cx, cy - h * 0.04f, w, h,
                     colorShadow = Color(0xFF94A3B8), colorBody = Color(0xFFCBD5E1))
-                drawSnowDots(cx, cy, w, h, snowOffset, count = 2, size = 0.048f,
+                drawSnowDots(cx, cy, w, h, snowProgress, count = 2, size = 0.048f,
                     color = Color(0xFFE2E8F0))
             }
 
@@ -163,7 +159,7 @@ fun WeatherConditionIcon(
             5100 -> {
                 drawCloud(cx, cy - h * 0.04f, w, h,
                     colorShadow = Color(0xFF94A3B8), colorBody = Color(0xFFCBD5E1))
-                drawSnowDots(cx, cy, w, h, snowOffset, count = 3, size = 0.052f,
+                drawSnowDots(cx, cy, w, h, snowProgress, count = 3, size = 0.052f,
                     color = Color(0xFFF1F5F9))
             }
 
@@ -171,7 +167,7 @@ fun WeatherConditionIcon(
             5000 -> {
                 drawCloud(cx, cy - h * 0.04f, w, h,
                     colorShadow = Color(0xFF7C8FA6), colorBody = Color(0xFFB8C5D0))
-                drawSnowDots(cx, cy, w, h, snowOffset, count = 4, size = 0.058f,
+                drawSnowDots(cx, cy, w, h, snowProgress, count = 4, size = 0.058f,
                     color = Color(0xFFFFFFFF))
             }
 
@@ -179,7 +175,7 @@ fun WeatherConditionIcon(
             5101 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF64748B), colorBody = Color(0xFF94A3B8))
-                drawSnowDots(cx, cy, w, h, snowOffset, count = 5, size = 0.062f,
+                drawSnowDots(cx, cy, w, h, snowProgress, count = 5, size = 0.062f,
                     color = Color(0xFFFFFFFF))
             }
 
@@ -187,29 +183,29 @@ fun WeatherConditionIcon(
             6000, 6200 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF475569), colorBody = Color(0xFF64748B))
-                drawRainDrops(cx, cy, w, h, rainOffset,
+                drawRainDrops(cx, cy, w, h, rainProgress,
                     dropColor = Color(0xFFBAE6FD), count = 2, heaviness = 0.8f)
-                drawSnowDots(cx, cy + h * 0.10f, w, h, snowOffset, count = 2,
+                drawSnowDots(cx, cy + h * 0.10f, w, h, snowProgress, count = 2,
                     size = 0.042f, color = Color(0xFFE0F2FE))
             }
 
             6001, 6201 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF334155), colorBody = Color(0xFF475569))
-                drawRainDrops(cx, cy, w, h, rainOffset,
+                drawRainDrops(cx, cy, w, h, rainProgress,
                     dropColor = Color(0xFF7DD3FC), count = 3, heaviness = 1.0f)
-                drawSnowDots(cx, cy + h * 0.08f, w, h, snowOffset, count = 2,
+                drawSnowDots(cx, cy + h * 0.08f, w, h, snowProgress, count = 2,
                     size = 0.046f, color = Color(0xFFBAE6FD))
             }
 
             // ── Ice Pellets / Sleet ───────────────────────────────────────────
-            7000, 7100, 7101 -> {
+            7000, 7100, 7101, 7102 -> {
                 drawCloud(cx, cy - h * 0.06f, w, h,
                     colorShadow = Color(0xFF475569), colorBody = Color(0xFF64748B))
                 // solid ice ball dots
                 val iceCenters = listOf(
                     Offset(cx - w * 0.16f, cy + h * 0.28f),
-                    Offset(cx,             cy + h * 0.33f + snowOffset * 0.4f),
+                    Offset(cx,             cy + h * 0.33f + snowProgress * h * 0.04f),
                     Offset(cx + w * 0.16f, cy + h * 0.28f)
                 )
                 iceCenters.forEach { pos ->
@@ -264,7 +260,7 @@ private fun DrawScope.drawSun(
 
 private fun DrawScope.drawRainDrops(
     cx: Float, cy: Float, w: Float, h: Float,
-    offset: Float, dropColor: Color, count: Int, heaviness: Float
+    progress: Float, dropColor: Color, count: Int, heaviness: Float
 ) {
     val spacing = w * 0.16f
     val startX = cx - spacing * (count - 1) / 2f
@@ -272,7 +268,7 @@ private fun DrawScope.drawRainDrops(
     val length = h * 0.14f * heaviness
     for (i in 0 until count) {
         val rx = startX + i * spacing
-        val ry = cy + h * 0.16f + offset
+        val ry = cy + h * 0.16f + progress * h * 0.08f
         drawLine(dropColor,
             start = Offset(rx, ry),
             end   = Offset(rx - w * 0.035f, ry + length),
@@ -282,13 +278,14 @@ private fun DrawScope.drawRainDrops(
 
 private fun DrawScope.drawSnowDots(
     cx: Float, cy: Float, w: Float, h: Float,
-    offset: Float, count: Int, size: Float, color: Color
+    progress: Float, count: Int, size: Float, color: Color
 ) {
     val spacing = w * 0.18f
     val startX = cx - spacing * (count - 1) / 2f
     for (i in 0 until count) {
         val px = startX + i * spacing
-        val py = cy + h * 0.20f + offset * (if (i % 2 == 0) 0.8f else 1.0f)
+        val drift = progress * h * if (i % 2 == 0) 0.07f else 0.09f
+        val py = cy + h * 0.20f + drift
         drawCircle(color, radius = w * size, center = Offset(px, py))
         // small glint
         drawCircle(Color.White.copy(alpha = 0.55f), radius = w * size * 0.4f,
@@ -313,18 +310,30 @@ private fun DrawScope.drawFogBands(
     }
 }
 
-private fun buildCloudPath(cx: Float, cy: Float, w: Float, h: Float): Path =
-    Path().apply {
-        moveTo(cx - w * 0.20f, cy + h * 0.15f)
-        lineTo(cx + w * 0.20f, cy + h * 0.15f)
-        arcTo(Rect(Offset(cx - w * 0.125f, cy - h * 0.125f), Size(w * 0.25f, h * 0.25f)),
-            90f, -180f, false)
-        arcTo(Rect(Offset(cx - w * 0.175f, cy - h * 0.175f), Size(w * 0.35f, h * 0.35f)),
-            180f, -135f, false)
-        arcTo(Rect(Offset(cx - w * 0.11f, cy - h * 0.11f), Size(w * 0.22f, h * 0.22f)),
-            270f, -135f, false)
-        close()
-    }
+private fun buildCloudPath(cx: Float, cy: Float, w: Float, h: Float): Path = Path().apply {
+    moveTo(cx - w * 0.40f, cy + h * 0.20f)
+    cubicTo(
+        cx - w * 0.48f, cy + h * 0.02f,
+        cx - w * 0.36f, cy - h * 0.13f,
+        cx - w * 0.22f, cy - h * 0.11f
+    )
+    cubicTo(
+        cx - w * 0.15f, cy - h * 0.34f,
+        cx + w * 0.13f, cy - h * 0.36f,
+        cx + w * 0.21f, cy - h * 0.12f
+    )
+    cubicTo(
+        cx + w * 0.37f, cy - h * 0.13f,
+        cx + w * 0.48f, cy + h * 0.01f,
+        cx + w * 0.40f, cy + h * 0.18f
+    )
+    cubicTo(
+        cx + w * 0.34f, cy + h * 0.25f,
+        cx - w * 0.33f, cy + h * 0.25f,
+        cx - w * 0.40f, cy + h * 0.20f
+    )
+    close()
+}
 
 private fun DrawScope.drawCloud(
     cx: Float, cy: Float, w: Float, h: Float,

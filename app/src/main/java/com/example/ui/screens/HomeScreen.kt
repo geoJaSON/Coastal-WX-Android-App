@@ -22,10 +22,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.ActiveAlert
 import com.example.data.DailyForecastItem
+import com.example.data.DailyValues
 import com.example.data.NowcastVerdict
 import com.example.data.PreferencesHelper
 import com.example.data.SavedLocation
+import com.example.data.TideSummary
 import com.example.data.TidesService
 import com.example.data.UnitFormatter
 import com.example.data.WeatherCodeMapper
@@ -61,6 +64,7 @@ fun HomeScreen(
     var isCelsius by remember { mutableStateOf(PreferencesHelper.getTempUnit(context) == "C") }
     var measurementSystem by remember { mutableStateOf(PreferencesHelper.getMeasurementSystem(context)) }
     var showLocationSelector by remember { mutableStateOf(false) }
+    var showAdditionalAlerts by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         isCelsius = PreferencesHelper.getTempUnit(context) == "C"
@@ -71,6 +75,32 @@ fun HomeScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
+                    val (statusLabel, statusColors) = when {
+                        isRefreshing -> "UPDATING" to (
+                            MaterialTheme.colorScheme.tertiaryContainer to
+                                MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        (weatherState as? WeatherUIState.Success)?.isCached == true -> "CACHED" to (
+                            MaterialTheme.colorScheme.secondaryContainer to
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        weatherState is WeatherUIState.Success -> "LIVE" to (
+                            MaterialTheme.colorScheme.primaryContainer to
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        weatherState is WeatherUIState.Error -> "OFFLINE" to (
+                            MaterialTheme.colorScheme.errorContainer to
+                                MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        weatherState is WeatherUIState.Loading -> "LOADING" to (
+                            MaterialTheme.colorScheme.surfaceVariant to
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        else -> "SETUP" to (
+                            MaterialTheme.colorScheme.surfaceVariant to
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                    }
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(32.dp))
@@ -83,14 +113,14 @@ fun HomeScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .background(statusColors.first)
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                "LIVE",
+                                statusLabel,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = statusColors.second,
                                 letterSpacing = 0.5.sp
                             )
                         }
@@ -174,57 +204,13 @@ fun HomeScreen(
                             .verticalScroll(scrollState)
                             .padding(horizontal = 16.dp)
                     ) {
-                        // Dismissible severe alert banners
-                        activeAlerts.forEach { alert ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                onClick = { onNavigateToAlertDetail(alert.id) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer
-                                ),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
-                                shape = RoundedCornerShape(24.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(MaterialTheme.colorScheme.error),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Filled.Warning, contentDescription = "Active Warning", tint = Color.White, modifier = Modifier.size(18.dp))
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(alert.title, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(
-                                            alert.headline ?: alert.instruction ?: alert.areaDesc ?: alert.description,
-                                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.82f),
-                                            fontSize = 11.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            "${alert.severity.uppercase()}  ·  VIEW DETAILS",
-                                            color = MaterialTheme.colorScheme.onErrorContainer,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            letterSpacing = 0.5.sp,
-                                            modifier = Modifier.padding(top = 5.dp)
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.dismissAlertBanner(alert.id) }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "Dismiss Banner", tint = MaterialTheme.colorScheme.onErrorContainer)
-                                    }
-                                }
-                            }
-                        }
+                        AlertSummary(
+                            alerts = activeAlerts,
+                            expanded = showAdditionalAlerts,
+                            onToggleExpanded = { showAdditionalAlerts = !showAdditionalAlerts },
+                            onAlertClick = onNavigateToAlertDetail,
+                            onDismiss = viewModel::dismissAlertBanner
+                        )
 
                         // Weather cache notice banner
                         if (state.isCached) {
@@ -276,13 +262,34 @@ fun HomeScreen(
                             "Ceiling " + UnitFormatter.distanceKmFractional(it, measurementSystem)
                         }
 
-                        // ── Two-column hero: left = emphasized conditions, right = key metrics ──
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp, bottom = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        HomeSectionHeader(
+                            title = "NOW",
+                            subtitle = "Current conditions",
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(28.dp),
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
+                            Box(
+                                modifier = Modifier.background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+                                            MaterialTheme.colorScheme.surface
+                                        )
+                                    )
+                                )
+                            ) {
+                                // Two-column hero: current conditions left, essential metrics right.
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 18.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                             // LEFT: primary conditions (temperature + condition icon, emphasized)
                             Column(
                                 modifier = Modifier
@@ -346,188 +353,48 @@ fun HomeScreen(
                                 }
                             }
 
-                            // RIGHT: key weather metrics (compact list)
-                            Column(
-                                modifier = Modifier.weight(0.44f),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                CompactMetricRow(Icons.Filled.WaterDrop, "HUMIDITY", "${state.humidity.toInt()}%")
-                                CompactMetricRow(Icons.Filled.Air, "WIND", speedValue)
-                                CompactMetricRow(Icons.Filled.Speed, "BAROMETER", pressureValue, pressureTrend?.label)
-                                CompactMetricRow(Icons.Filled.WbSunny, "UV INDEX", "${state.uvIndex.toInt()}", uvCategory.takeIf { it != "—" })
-                                CompactMetricRow(Icons.Filled.Visibility, "VISIBILITY", UnitFormatter.distanceKm(state.visibility, measurementSystem), ceilingLabel)
-                                CompactMetricRow(Icons.Filled.Storm, "PEAK GUST", peakGustLabel)
+                                    // RIGHT: essential, immediately actionable conditions.
+                                    Column(
+                                        modifier = Modifier.weight(0.44f),
+                                        verticalArrangement = Arrangement.spacedBy(13.dp)
+                                    ) {
+                                        CompactMetricRow(Icons.Filled.WaterDrop, "HUMIDITY", "${state.humidity.toInt()}%")
+                                        CompactMetricRow(Icons.Filled.Air, "WIND", speedValue)
+                                        CompactMetricRow(Icons.Filled.Speed, "BAROMETER", pressureValue, pressureTrend?.label)
+                                        CompactMetricRow(
+                                            Icons.Filled.Visibility,
+                                            "VISIBILITY",
+                                            UnitFormatter.distanceKm(state.visibility, measurementSystem),
+                                            ceilingLabel
+                                        )
+                                    }
+                                }
                             }
                         }
 
-                        // ── Secondary metrics (2×2 grid below hero) ──
+                        // Supporting values are grouped by time horizon below the hero.
                         val todayRainMm = remember(state.hourlyForecast) {
                             state.hourlyForecast.take(24).sumOf { it.values.rainIntensity ?: 0.0 }
                         }
                         val rainTodayLabel = UnitFormatter.rainFromMm(todayRainMm, measurementSystem)
                         val currentHour = state.hourlyForecast.firstOrNull()?.values
-                        val gustC = currentHour?.windGust
                         val dewC = currentHour?.dewPoint
-                        val gustStr = gustC?.let { UnitFormatter.windFromMs(it, windUnit) } ?: "—"
                         val dewStr = dewC?.let { "${UnitFormatter.tempFromC(it, isCelsius).toInt()}°" } ?: "—"
                         val today = state.dailyForecast.firstOrNull()?.values
-                        val sunriseStr = formatTimeUtc(today?.sunriseTime)
-                        val sunsetStr = formatTimeUtc(today?.sunsetTime)
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            MeteorologyIndicatorCard(
-                                title = "RAIN TODAY",
-                                value = rainTodayLabel,
-                                icon = Icons.Filled.WaterDrop,
-                                modifier = Modifier.weight(1f),
-                                subtitle = "Next 24h expected"
-                            )
-                            MeteorologyIndicatorCard(
-                                title = "WIND GUST",
-                                value = gustStr,
-                                icon = Icons.Filled.Tsunami,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            MeteorologyIndicatorCard(
-                                title = "DEW POINT",
-                                value = dewStr,
-                                icon = Icons.Filled.Opacity,
-                                modifier = Modifier.weight(1f)
-                            )
-                            SunriseSetCard(
-                                modifier = Modifier.weight(1f),
-                                sunriseStr = sunriseStr,
-                                sunsetStr = sunsetStr
-                            )
-                        }
-
-                        // ── Tides card ──
-                        tideSummary?.let { summary ->
-                            val next = summary.nextEvent()
-                            if (next != null) {
-                                val ts = TidesService.parsePredictionTime(next.time)
-                                val timeLabel = if (ts != null) {
-                                    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ts))
-                                } else next.time
-                                val heightFt = next.value.toDoubleOrNull()
-                                    ?.let { UnitFormatter.tideFromFeet(it, measurementSystem) }
-                                    ?: next.value
-                                val typeLabel = if (next.type == "H") "High Tide" else "Low Tide"
-
-                                val todayVals = state.dailyForecast.firstOrNull()?.values
-                                val moonLabel = moonPhaseLabel(todayVals?.moonPhase)
-                                val moonriseStr = formatTimeUtc(todayVals?.moonriseTime)
-                                val moonsetStr = formatTimeUtc(todayVals?.moonsetTime)
-                                val showMoon = moonLabel != "—" || moonriseStr != null || moonsetStr != null
-
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(bottom = 24.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surface
-                                    ),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                    shape = RoundedCornerShape(28.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Waves,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(28.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(14.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    "NEXT TIDE",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    letterSpacing = 0.5.sp
-                                                )
-                                                Text(
-                                                    "$typeLabel • $timeLabel",
-                                                    fontSize = 18.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                Text(
-                                                    "$heightFt • ${summary.stationName}",
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-
-                                        if (showMoon) {
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            HorizontalDivider(
-                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                                            )
-                                            Spacer(modifier = Modifier.height(10.dp))
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.NightlightRound,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(10.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        moonLabel,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    val sub = listOfNotNull(
-                                                        moonriseStr?.let { "Rise $it" },
-                                                        moonsetStr?.let { "Set $it" }
-                                                    ).joinToString(" • ")
-                                                    if (sub.isNotBlank()) {
-                                                        Text(
-                                                            sub,
-                                                            fontSize = 10.sp,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                        } ?: Spacer(modifier = Modifier.height(8.dp))
-
-                        // ── Hourly chart ──
-                        Text(
-                            "HOURLY TEMPS & PRECIP",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        HomeSectionHeader(
+                            title = "UP NEXT",
+                            subtitle = "Coastal timing and the next several hours",
+                            modifier = Modifier.padding(top = 24.dp)
                         )
+                        CoastalAndSkyCard(
+                            summary = tideSummary,
+                            today = today,
+                            measurementSystem = measurementSystem
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 24.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surface
                             ),
@@ -541,14 +408,23 @@ fun HomeScreen(
                             )
                         }
 
-                        // ── 5-day forecast with expandable day details ──
-                        Text(
-                            "5-DAY OUTLOOK",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        HomeSectionHeader(
+                            title = "TODAY",
+                            subtitle = "Daily totals and exposure",
+                            modifier = Modifier.padding(top = 24.dp)
+                        )
+                        TodayDetailsGrid(
+                            rainLabel = rainTodayLabel,
+                            peakGustLabel = peakGustLabel,
+                            dewPointLabel = dewStr,
+                            uvLabel = state.uvIndex.toInt().toString(),
+                            uvCategory = uvCategory.takeIf { it != "—" }
+                        )
+
+                        HomeSectionHeader(
+                            title = "NEXT 5 DAYS",
+                            subtitle = "Tap a day for full details",
+                            modifier = Modifier.padding(top = 24.dp)
                         )
                         Card(
                             modifier = Modifier
@@ -760,7 +636,206 @@ private fun formatTimeUtc(iso: String?): String? {
     }
 }
 
-// ── Compact metric row for the right hero column ──
+@Composable
+private fun AlertSummary(
+    alerts: List<ActiveAlert>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onAlertClick: (String) -> Unit,
+    onDismiss: (String) -> Unit
+) {
+    if (alerts.isEmpty()) return
+    val orderedAlerts = remember(alerts) {
+        alerts.sortedByDescending { alertSeverityWeight(it.severity) }
+    }
+    val primaryAlert = orderedAlerts.first()
+    val additionalAlerts = orderedAlerts.drop(1)
+
+    Column(
+        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { onAlertClick(primaryAlert.id) },
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.error),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = "Active Warning",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        primaryAlert.title,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        primaryAlert.headline ?: primaryAlert.instruction
+                            ?: primaryAlert.areaDesc ?: primaryAlert.description,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.82f),
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${primaryAlert.severity.uppercase()}  ·  VIEW DETAILS",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(top = 5.dp)
+                    )
+                }
+                IconButton(onClick = { onDismiss(primaryAlert.id) }) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Dismiss alert banner",
+                        tint = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+
+        if (additionalAlerts.isNotEmpty()) {
+            TextButton(
+                onClick = onToggleExpanded,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(
+                    if (expanded) "HIDE ADDITIONAL ALERTS"
+                    else "${additionalAlerts.size} MORE ALERT${if (additionalAlerts.size == 1) "" else "S"}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.4.sp
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    additionalAlerts.forEach { alert ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onAlertClick(alert.id) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+                            ),
+                            shape = RoundedCornerShape(18.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.WarningAmber,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        alert.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        alert.severity.uppercase(),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                IconButton(onClick = { onDismiss(alert.id) }) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Dismiss alert banner",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun alertSeverityWeight(severity: String): Int = when (severity.lowercase()) {
+    "extreme" -> 4
+    "severe" -> 3
+    "moderate" -> 2
+    "minor" -> 1
+    else -> 0
+}
+
+@Composable
+private fun HomeSectionHeader(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Text(
+            title,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            subtitle,
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// Compact metric row for the right hero column.
 @Composable
 private fun CompactMetricRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -801,46 +876,248 @@ private fun CompactMetricRow(
     }
 }
 
-// ── Combined sunrise/sunset card ──
 @Composable
-private fun SunriseSetCard(modifier: Modifier = Modifier, sunriseStr: String?, sunsetStr: String?) {
+private fun CoastalAndSkyCard(
+    summary: TideSummary?,
+    today: DailyValues?,
+    measurementSystem: String
+) {
+    val nextTide = summary?.nextEvent()
+    val sunrise = formatTimeUtc(today?.sunriseTime)
+    val sunset = formatTimeUtc(today?.sunsetTime)
+    val moonLabel = moonPhaseLabel(today?.moonPhase)
+    val moonrise = formatTimeUtc(today?.moonriseTime)
+    val moonset = formatTimeUtc(today?.moonsetTime)
+    val hasSkyData = sunrise != null || sunset != null || moonLabel != "—" ||
+        moonrise != null || moonset != null
+
+    if (nextTide == null && !hasSkyData) return
+
+    val tideTime = nextTide?.let { tide ->
+        TidesService.parsePredictionTime(tide.time)?.let { timestamp ->
+            SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timestamp))
+        } ?: tide.time
+    }
+    val tideHeight = nextTide?.value?.toDoubleOrNull()
+        ?.let { UnitFormatter.tideFromFeet(it, measurementSystem) }
+        ?: nextTide?.value
+    val tideType = nextTide?.let { if (it.type == "H") "High Tide" else "Low Tide" }
+
     Card(
-        modifier = modifier,
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(28.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Filled.WbSunny,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Text(
-                    "SUN",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 0.5.sp
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.WbTwilight, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(sunriseStr ?: "—", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Waves,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Bedtime, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(sunsetStr ?: "—", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "COASTAL & SKY",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.7.sp
+                    )
+                    Text(
+                        summary?.stationName ?: "Sun and moon timing",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (nextTide != null) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "NEXT TIDE",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                "$tideType · $tideTime",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        if (!tideHeight.isNullOrBlank()) {
+                            Text(
+                                tideHeight,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (hasSkyData) {
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.WbTwilight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "DAYLIGHT",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            "Rise ${sunrise ?: "—"}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Set ${sunset ?: "—"}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 12.dp)
+                            .width(1.dp)
+                            .height(54.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.NightlightRound,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "MOON",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.4.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            moonLabel,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val moonTiming = listOfNotNull(
+                            moonrise?.let { "Rise $it" },
+                            moonset?.let { "Set $it" }
+                        ).joinToString(" · ")
+                        if (moonTiming.isNotBlank()) {
+                            Text(
+                                moonTiming,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TodayDetailsGrid(
+    rainLabel: String,
+    peakGustLabel: String,
+    dewPointLabel: String,
+    uvLabel: String,
+    uvCategory: String?
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        MeteorologyIndicatorCard(
+            title = "NEXT 24H RAIN",
+            value = rainLabel,
+            icon = Icons.Filled.WaterDrop,
+            modifier = Modifier.weight(1f).heightIn(min = 92.dp),
+            subtitle = "Expected total"
+        )
+        MeteorologyIndicatorCard(
+            title = "TODAY'S PEAK",
+            value = peakGustLabel,
+            icon = Icons.Filled.Tsunami,
+            modifier = Modifier.weight(1f).heightIn(min = 92.dp),
+            subtitle = "Wind gust"
+        )
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        MeteorologyIndicatorCard(
+            title = "DEW POINT",
+            value = dewPointLabel,
+            icon = Icons.Filled.Opacity,
+            modifier = Modifier.weight(1f).heightIn(min = 92.dp)
+        )
+        MeteorologyIndicatorCard(
+            title = "UV INDEX",
+            value = uvLabel,
+            icon = Icons.Filled.WbSunny,
+            modifier = Modifier.weight(1f).heightIn(min = 92.dp),
+            subtitle = uvCategory
+        )
     }
 }
 
